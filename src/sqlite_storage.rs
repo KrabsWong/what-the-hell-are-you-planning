@@ -7,7 +7,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static BACKUP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-const TABLES: [&str; 6] = ["tasks", "projects", "runs", "policies", "automations", "automation_occurrences"];
+const TABLES: [&str; 6] = [
+    "tasks",
+    "projects",
+    "runs",
+    "policies",
+    "automations",
+    "automation_occurrences",
+];
 const SCHEMA_VERSION: i64 = 3;
 
 pub fn load(path: &Path, root: &Path) -> Result<Option<Store>, String> {
@@ -24,7 +31,10 @@ fn read(path: &Path, root: &Path) -> Result<Option<Store>, Box<dyn std::error::E
     read_connection(&tx, root)
 }
 
-fn read_connection(tx: &Connection, root: &Path) -> Result<Option<Store>, Box<dyn std::error::Error>> {
+fn read_connection(
+    tx: &Connection,
+    root: &Path,
+) -> Result<Option<Store>, Box<dyn std::error::Error>> {
     let version: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
     if !(1..=SCHEMA_VERSION).contains(&version) {
         return Err(format!("Unsupported SQLite workspace version: {version}").into());
@@ -176,7 +186,9 @@ fn write(
         let _span = crate::persistence_metrics::Span::start("write.verify");
         progress("Verifying upgraded data…");
         if read_connection(&tx, root)?.as_ref() != Some(store) {
-            return Err("Path upgrade changed workspace data; the transaction was rolled back".into());
+            return Err(
+                "Path upgrade changed workspace data; the transaction was rolled back".into(),
+            );
         }
         check_integrity(&tx)?;
     }
@@ -188,25 +200,39 @@ fn write(
 }
 
 /// The caller owns the workspace lock. The backup retains the old schema and absolute paths.
-pub fn upgrade_paths(path: &Path, root: &Path, mut progress: impl FnMut(&'static str)) -> Result<Option<PathBuf>, String> {
+pub fn upgrade_paths(
+    path: &Path,
+    root: &Path,
+    mut progress: impl FnMut(&'static str),
+) -> Result<Option<PathBuf>, String> {
     upgrade(path, root, &mut progress).map_err(|e| format!("Cannot upgrade workspace paths: {e}"))
 }
 
 fn check_integrity(db: &Connection) -> Result<(), Box<dyn std::error::Error>> {
     let mut statement = db.prepare("PRAGMA integrity_check")?;
-    let checks = statement.query_map([], |row| row.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
-    if checks != ["ok"] { return Err("SQLite integrity check failed".into()); }
+    let checks = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if checks != ["ok"] {
+        return Err("SQLite integrity check failed".into());
+    }
     Ok(())
 }
 
-fn upgrade(path: &Path, root: &Path, progress: &mut impl FnMut(&'static str)) -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
-    if !path.exists() { return Ok(None); }
+fn upgrade(
+    path: &Path,
+    root: &Path,
+    progress: &mut impl FnMut(&'static str),
+) -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
+    if !path.exists() {
+        return Ok(None);
+    }
     let db = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     db.busy_timeout(std::time::Duration::from_secs(5))?;
     let version: i64 = db.pragma_query_value(None, "user_version", |row| row.get(0))?;
     match version {
         SCHEMA_VERSION => return Ok(None),
-        1 | 2 => {},
+        1 | 2 => {}
         _ => return Err(format!("Unsupported SQLite workspace version: {version}").into()),
     }
     let original = read_connection(&db, root)?.ok_or("Workspace data is missing")?;
@@ -214,18 +240,29 @@ fn upgrade(path: &Path, root: &Path, progress: &mut impl FnMut(&'static str)) ->
     let mut value = serde_json::to_value(&original)?;
     transform_paths(&mut value, root, true)?;
     progress("Backing up existing data…");
-    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
-    let backup = path.with_file_name(format!("workspace.before-path-upgrade-{timestamp}-{}-{}.sqlite3", std::process::id(), BACKUP_SEQUENCE.fetch_add(1, Ordering::Relaxed)));
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let backup = path.with_file_name(format!(
+        "workspace.before-path-upgrade-{timestamp}-{}-{}.sqlite3",
+        std::process::id(),
+        BACKUP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
-    #[cfg(unix)] {
+    #[cfg(unix)]
+    {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     drop(options.open(&backup)?);
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
-        db.execute("VACUUM INTO ?1", [backup.to_str().ok_or("Backup path must be UTF-8")?])?;
-        let backup_db = Connection::open_with_flags(&backup, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        db.execute(
+            "VACUUM INTO ?1",
+            [backup.to_str().ok_or("Backup path must be UTF-8")?],
+        )?;
+        let backup_db =
+            Connection::open_with_flags(&backup, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         check_integrity(&backup_db)?;
         if read_connection(&backup_db, root)?.as_ref() != Some(&original) {
             return Err("Backup verification failed; original workspace was not changed".into());
@@ -244,43 +281,81 @@ fn upgrade(path: &Path, root: &Path, progress: &mut impl FnMut(&'static str)) ->
 /// Only operational paths are rewritten. Free text and historical evidence are immutable.
 /// Runtime stores remain absolute so execution, recovery and signature comparisons share a root.
 pub(crate) fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> Result<(), String> {
-    if !root.is_absolute() { return Err("Workspace storage root must be absolute".into()); }
+    if !root.is_absolute() {
+        return Err("Workspace storage root must be absolute".into());
+    }
     fn path(value: &mut Value, root: &Path, encode: bool) -> Result<(), String> {
-        let Some(text) = value.as_str() else { return Err("Invalid workspace path".into()); };
-        if text.is_empty() { return Ok(()); }
+        let Some(text) = value.as_str() else {
+            return Err("Invalid workspace path".into());
+        };
+        if text.is_empty() {
+            return Ok(());
+        }
         let original = Path::new(text);
         if encode {
             // External legacy directories must survive until explicitly imported into the workspace.
-            if !original.is_absolute() { return Err("Runtime workspace paths must be absolute".into()); }
+            if !original.is_absolute() {
+                return Err("Runtime workspace paths must be absolute".into());
+            }
             if let Ok(relative) = original.strip_prefix(root) {
-                if text.contains('\\') || relative.components().any(|c| !matches!(c, Component::Normal(_) | Component::CurDir)) {
+                if text.contains('\\')
+                    || relative
+                        .components()
+                        .any(|c| !matches!(c, Component::Normal(_) | Component::CurDir))
+                {
                     return Err("Workspace path must not contain parent traversal".into());
                 }
-                *value = Value::String(if relative.as_os_str().is_empty() { ".".into() } else { relative.to_string_lossy().into_owned() });
+                *value = Value::String(if relative.as_os_str().is_empty() {
+                    ".".into()
+                } else {
+                    relative.to_string_lossy().into_owned()
+                });
             }
         } else if !original.is_absolute() {
-            if text.contains('\\') || original.components().any(|c| !matches!(c, Component::Normal(_) | Component::CurDir)) {
+            if text.contains('\\')
+                || original
+                    .components()
+                    .any(|c| !matches!(c, Component::Normal(_) | Component::CurDir))
+            {
                 return Err("Invalid relative workspace path".into());
             }
-            let resolved = if text == "." { root.to_path_buf() } else { root.join(original) };
+            let resolved = if text == "." {
+                root.to_path_buf()
+            } else {
+                root.join(original)
+            };
             *value = Value::String(resolved.to_string_lossy().into_owned());
         }
         Ok(())
     }
-    fn signature_path(original: &str, root: &Path, encode: bool, project: bool, depth: usize) -> Result<String, String> {
-        let Ok(mut signature) = serde_json::from_str::<Value>(original) else { return Ok(original.into()); };
-        let Some(fields) = signature.as_array() else { return Ok(original.into()); };
+    fn signature_path(
+        original: &str,
+        root: &Path,
+        encode: bool,
+        project: bool,
+        depth: usize,
+    ) -> Result<String, String> {
+        let Ok(mut signature) = serde_json::from_str::<Value>(original) else {
+            return Ok(original.into());
+        };
+        let Some(fields) = signature.as_array() else {
+            return Ok(original.into());
+        };
         // Request signatures can wrap their original tuple with understanding
         // state and, during regeneration, with the existing plan snapshot.
         // Only the first field is an operational signature; summary, feedback,
         // source bindings and historical evidence remain byte-for-byte intact.
-        if project && depth < 2
+        if project
+            && depth < 2
             && (fields.len() == 2 || (fields.len() == 6 && fields[1] == "understanding-v1"))
             && let Some(inner) = fields[0].as_str()
         {
             let rewritten = signature_path(inner, root, encode, project, depth + 1)?;
-            return if rewritten == inner { Ok(original.into()) }
-                else { replace_signature_path(original, 0, &Value::String(rewritten)) };
+            return if rewritten == inner {
+                Ok(original.into())
+            } else {
+                replace_signature_path(original, 0, &Value::String(rewritten))
+            };
         }
         let index = match (project, fields.len()) {
             (true, 7 | 8) => 5,
@@ -290,32 +365,62 @@ pub(crate) fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> R
         };
         let before = signature[index].clone();
         path(&mut signature[index], root, encode)?;
-        if signature[index] == before { Ok(original.into()) }
-        else { replace_signature_path(original, index, &signature[index]) }
+        if signature[index] == before {
+            Ok(original.into())
+        } else {
+            replace_signature_path(original, index, &signature[index])
+        }
     }
     if let Some(projects) = value.get_mut("projects").and_then(Value::as_array_mut) {
-        for project in projects { if let Some(directory) = project.get_mut("directory") { path(directory, root, encode)?; } }
+        for project in projects {
+            if let Some(directory) = project.get_mut("directory") {
+                path(directory, root, encode)?;
+            }
+        }
     }
     if let Some(runs) = value.get_mut("runs").and_then(Value::as_array_mut) {
         for run in runs {
             for field in ["directory", "workspace_source"] {
-                if let Some(directory) = run.get_mut(field).filter(|v| !v.is_null()) { path(directory, root, encode)?; }
+                if let Some(directory) = run.get_mut(field).filter(|v| !v.is_null()) {
+                    path(directory, root, encode)?;
+                }
             }
             // Rewrite saved paths without recomputing signatures from current inputs.
-            let original = run.get("input_signature").and_then(Value::as_str).unwrap_or_default();
-            let project = run.get("project_plan").is_some_and(|value| !value.is_null());
-            if project || run.get("research_kind").is_some_and(|value| !value.is_null()) {
+            let original = run
+                .get("input_signature")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let project = run
+                .get("project_plan")
+                .is_some_and(|value| !value.is_null());
+            if project
+                || run
+                    .get("research_kind")
+                    .is_some_and(|value| !value.is_null())
+            {
                 let rewritten = signature_path(original, root, encode, project, 0)?;
-                if rewritten != original { run["input_signature"] = Value::String(rewritten); }
+                if rewritten != original {
+                    run["input_signature"] = Value::String(rewritten);
+                }
             }
         }
     }
     if let Some(automations) = value.get_mut("automations").and_then(Value::as_array_mut) {
         for automation in automations {
-            let Some(binding) = automation.get_mut("plan_binding") else { continue; };
-            let Some(signature) = binding.get("input_signature").and_then(Value::as_str).map(str::to_string) else { continue; };
+            let Some(binding) = automation.get_mut("plan_binding") else {
+                continue;
+            };
+            let Some(signature) = binding
+                .get("input_signature")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+            else {
+                continue;
+            };
             let rewritten = signature_path(&signature, root, encode, true, 0)?;
-            if rewritten != signature { binding["input_signature"] = Value::String(rewritten); }
+            if rewritten != signature {
+                binding["input_signature"] = Value::String(rewritten);
+            }
         }
     }
     Ok(())
@@ -323,19 +428,41 @@ pub(crate) fn transform_paths(value: &mut Value, root: &Path, encode: bool) -> R
 
 /// Preserve the exact JSON bytes of all other inputs (including struct key ordering).
 /// Signatures are compared as strings, so serializing the whole Value would invalidate them.
-pub(crate) fn replace_signature_path(signature: &str, index: usize, replacement: &Value) -> Result<String, String> {
+pub(crate) fn replace_signature_path(
+    signature: &str,
+    index: usize,
+    replacement: &Value,
+) -> Result<String, String> {
     let mut offset = signature.find('[').ok_or("Invalid input signature")? + 1;
     for position in 0..=index {
-        let mut values = serde_json::Deserializer::from_str(&signature[offset..]).into_iter::<Value>();
-        values.next().ok_or("Missing signature field")?.map_err(|e| e.to_string())?;
+        let mut values =
+            serde_json::Deserializer::from_str(&signature[offset..]).into_iter::<Value>();
+        values
+            .next()
+            .ok_or("Missing signature field")?
+            .map_err(|e| e.to_string())?;
         let end = offset + values.byte_offset();
         if position == index {
-            let start = offset + signature[offset..end].len() - signature[offset..end].trim_start().len();
-            return Ok(format!("{}{}{}", &signature[..start], replacement, &signature[end..]));
+            let start =
+                offset + signature[offset..end].len() - signature[offset..end].trim_start().len();
+            return Ok(format!(
+                "{}{}{}",
+                &signature[..start],
+                replacement,
+                &signature[end..]
+            ));
         }
         offset = end;
-        while signature.as_bytes().get(offset).is_some_and(u8::is_ascii_whitespace) { offset += 1; }
-        if signature.as_bytes().get(offset) != Some(&b',') { return Err("Invalid signature separator".into()); }
+        while signature
+            .as_bytes()
+            .get(offset)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            offset += 1;
+        }
+        if signature.as_bytes().get(offset) != Some(&b',') {
+            return Err("Invalid signature separator".into());
+        }
         offset += 1;
     }
     Err("Missing signature field".into())
@@ -358,7 +485,8 @@ mod tests {
         let path = root.join("workspace.sqlite3");
         let mut original = Store::mock();
         original.set_default_model("test/model".into());
-        original.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
+        original.project_at_mut(0).unwrap().directory =
+            root.join("projects/project-1").to_string_lossy().into();
         original.set_stage(1, Stage::InProgress).unwrap();
         original.simulate_run(1).unwrap();
         let directory = original.project_at_mut(0).unwrap().directory.clone();
@@ -377,13 +505,18 @@ mod tests {
         assert_eq!(load(&path, &root).unwrap(), Some(original.clone()));
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         let mut invalid = original.clone();
-        invalid.project_at_mut(0).unwrap().directory = root.join("bad\\name").to_string_lossy().into();
+        invalid.project_at_mut(0).unwrap().directory =
+            root.join("bad\\name").to_string_lossy().into();
         assert!(save(&path, &root, &invalid).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         // A failed upgrade rolls back both data and schema version.
         db.execute_batch("CREATE TRIGGER reject_projects BEFORE INSERT ON projects BEGIN SELECT RAISE(ABORT, 'failure'); END;").unwrap();
         assert!(save(&path, &root, &original).is_err());
-        assert_eq!(db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), 1);
+        assert_eq!(
+            db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
         assert_eq!(load(&path, &root).unwrap(), Some(original.clone()));
         db.execute_batch("DROP TRIGGER reject_projects;").unwrap();
         drop(db);
@@ -391,9 +524,13 @@ mod tests {
         assert_eq!(load(&path, &root).unwrap(), Some(original.clone()));
         let moved = root.with_extension("moved");
         std::fs::rename(&root, &moved).unwrap();
-        let restored = Storage::new(moved.join("workspace.sqlite3")).load().unwrap().unwrap();
+        let restored = Storage::new(moved.join("workspace.sqlite3"))
+            .load()
+            .unwrap()
+            .unwrap();
         let mut expected = original;
-        expected.project_at_mut(0).unwrap().directory = moved.join("projects/project-1").to_string_lossy().into();
+        expected.project_at_mut(0).unwrap().directory =
+            moved.join("projects/project-1").to_string_lossy().into();
         let expected_directory = expected.project_at_mut(0).unwrap().directory.clone();
         expected.last_run_mut().unwrap().directory = expected_directory;
         expected.last_run_mut().unwrap().workspace_source = Some(moved.to_string_lossy().into());
@@ -407,7 +544,8 @@ mod tests {
         let path = root.join("workspace.sqlite3");
         let mut store = Store::mock();
         store.set_default_model("test/model".into());
-        store.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
+        store.project_at_mut(0).unwrap().directory =
+            root.join("projects/project-1").to_string_lossy().into();
         std::fs::create_dir_all(&store.project_at_mut(0).unwrap().directory).unwrap();
         std::fs::create_dir_all(root.join("automations")).unwrap();
         let automation_project = store
@@ -430,12 +568,7 @@ mod tests {
             )
             .unwrap();
         let request = store
-            .create_automation_request(
-                id,
-                automation_project,
-                "Objective A",
-                "Expected A",
-            )
+            .create_automation_request(id, automation_project, "Objective A", "Expected A")
             .unwrap();
         crate::request_planning::confirm_test_request(&mut store, request);
         let mut run = store.prepare_request_plan(request).unwrap();
@@ -453,14 +586,7 @@ mod tests {
         store.request_at_mut(0).unwrap().planning_run_id = Some(run_id);
         let revision = store.request_at_mut(0).unwrap().revision;
         store
-            .apply_automation_template(
-                id,
-                request,
-                revision,
-                &signature,
-                plan,
-                2_000,
-            )
+            .apply_automation_template(id, request, revision, &signature, plan, 2_000)
             .unwrap();
         let mut stale = store.runs()[0].clone();
         stale.id = run_id + 1;
@@ -491,12 +617,25 @@ mod tests {
             .directory
             .clone();
         assert!(binding.input_signature.contains(&expected_directory));
-        assert_eq!(restored.projects()[0].directory, moved.join("projects/project-1").to_string_lossy().to_string());
+        assert_eq!(
+            restored.projects()[0].directory,
+            moved
+                .join("projects/project-1")
+                .to_string_lossy()
+                .to_string()
+        );
         assert!(restored.plan_binding_problem(definition).is_none());
         assert!(restored.planning_attempt_is_current(run_id));
-        let stale = restored.runs().iter().find(|run| run.id == run_id + 1).unwrap();
+        let stale = restored
+            .runs()
+            .iter()
+            .find(|run| run.id == run_id + 1)
+            .unwrap();
         assert_eq!(stale.input_signature, "[\"stale-before-move\"]");
-        assert!(stale.planning_owner.is_none(), "a stale signature stays unassigned");
+        assert!(
+            stale.planning_owner.is_none(),
+            "a stale signature stays unassigned"
+        );
         std::fs::remove_dir_all(moved).unwrap();
     }
 
@@ -506,7 +645,8 @@ mod tests {
         let path = root.join("workspace.sqlite3");
         let mut store = Store::mock();
         store.set_default_model("test/model".into());
-        store.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
+        store.project_at_mut(0).unwrap().directory =
+            root.join("projects/project-1").to_string_lossy().into();
         std::fs::create_dir_all(&store.project_at_mut(0).unwrap().directory).unwrap();
         let id = store
             .create_automation_draft(
@@ -560,18 +700,38 @@ mod tests {
         assert_eq!(restored.research_requests()[0].expected_result, None);
         assert_eq!(restored.research_requests()[0].revision, 1);
         assert_eq!(
-            restored.runs().iter().find(|run| run.id == owned_id).unwrap().planning_owner.as_ref().unwrap().request_id,
+            restored
+                .runs()
+                .iter()
+                .find(|run| run.id == owned_id)
+                .unwrap()
+                .planning_owner
+                .as_ref()
+                .unwrap()
+                .request_id,
             request
         );
-        assert!(restored.runs().iter().find(|run| run.id == owned_id + 1).unwrap().planning_owner.is_none());
+        assert!(
+            restored
+                .runs()
+                .iter()
+                .find(|run| run.id == owned_id + 1)
+                .unwrap()
+                .planning_owner
+                .is_none()
+        );
     }
 
     fn legacy_fixture(root: &Path) -> (Storage, Store) {
         let storage = Storage::new(root.join("workspace.sqlite3"));
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = root.join("projects/project-1").to_string_lossy().into();
+        store.project_at_mut(0).unwrap().directory =
+            root.join("projects/project-1").to_string_lossy().into();
         save(storage.path(), Path::new("/old-storage-format"), &store).unwrap();
-        Connection::open(storage.path()).unwrap().pragma_update(None, "user_version", 1).unwrap();
+        Connection::open(storage.path())
+            .unwrap()
+            .pragma_update(None, "user_version", 1)
+            .unwrap();
         (storage, store)
     }
 
@@ -581,21 +741,52 @@ mod tests {
         let (storage, original) = legacy_fixture(&root);
         let _lock = storage.acquire_lock().unwrap();
         let mut stages = vec![];
-        let backup = storage.upgrade_paths(|stage| stages.push(stage)).unwrap().unwrap();
-        assert_eq!(stages, ["Backing up existing data…", "Converting workspace paths…", "Verifying upgraded data…"]);
+        let backup = storage
+            .upgrade_paths(|stage| stages.push(stage))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stages,
+            [
+                "Backing up existing data…",
+                "Converting workspace paths…",
+                "Verifying upgraded data…"
+            ]
+        );
         assert_eq!(load(&backup, &root).unwrap(), Some(original.clone()));
         assert_eq!(load(storage.path(), &root).unwrap(), Some(original));
         let backup_db = Connection::open(&backup).unwrap();
-        assert_eq!(backup_db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), 1);
-        let payload: String = backup_db.query_row("SELECT payload FROM projects LIMIT 1", [], |r| r.get(0)).unwrap();
-        assert!(serde_json::from_str::<Value>(&payload).unwrap()["directory"].as_str().unwrap().starts_with(root.to_str().unwrap()));
-        #[cfg(unix)] {
+        assert_eq!(
+            backup_db
+                .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        let payload: String = backup_db
+            .query_row("SELECT payload FROM projects LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            serde_json::from_str::<Value>(&payload).unwrap()["directory"]
+                .as_str()
+                .unwrap()
+                .starts_with(root.to_str().unwrap())
+        );
+        #[cfg(unix)]
+        {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(std::fs::metadata(&backup).unwrap().permissions().mode() & 0o777, 0o600);
+            assert_eq!(
+                std::fs::metadata(&backup).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
         }
         let entries = std::fs::read_dir(&root).unwrap().count();
         let bytes = std::fs::read(storage.path()).unwrap();
-        assert!(storage.upgrade_paths(|_| panic!("v2 must not run migration stages")).unwrap().is_none());
+        assert!(
+            storage
+                .upgrade_paths(|_| panic!("v2 must not run migration stages"))
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(std::fs::read(storage.path()).unwrap(), bytes);
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), entries);
         std::fs::remove_dir_all(root).unwrap();
@@ -609,21 +800,48 @@ mod tests {
         db.execute_batch("CREATE TRIGGER corrupt_project AFTER INSERT ON projects BEGIN UPDATE projects SET payload=json_set(payload,'$.name','changed by trigger') WHERE position=NEW.position; END;").unwrap();
         let bytes = std::fs::read(storage.path()).unwrap();
         for expected_backups in 1..=2 {
-            assert!(storage.upgrade_paths(|_| {}).unwrap_err().contains("rolled back"));
+            assert!(
+                storage
+                    .upgrade_paths(|_| {})
+                    .unwrap_err()
+                    .contains("rolled back")
+            );
             assert_eq!(std::fs::read(storage.path()).unwrap(), bytes);
             assert_eq!(load(storage.path(), &root).unwrap(), Some(original.clone()));
-            let backups: Vec<_> = std::fs::read_dir(&root).unwrap().filter_map(|entry| {
-                let path = entry.unwrap().path();
-                path.file_name().unwrap().to_str().unwrap().starts_with("workspace.before-path-upgrade-").then_some(path)
-            }).collect();
+            let backups: Vec<_> = std::fs::read_dir(&root)
+                .unwrap()
+                .filter_map(|entry| {
+                    let path = entry.unwrap().path();
+                    path.file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .starts_with("workspace.before-path-upgrade-")
+                        .then_some(path)
+                })
+                .collect();
             assert_eq!(backups.len(), expected_backups);
-            for backup in backups { assert_eq!(load(&backup, &root).unwrap(), Some(original.clone())); }
+            for backup in backups {
+                assert_eq!(load(&backup, &root).unwrap(), Some(original.clone()));
+            }
         }
         db.execute_batch("DROP TRIGGER corrupt_project").unwrap();
         drop(db);
         // An ordinary save cannot bypass the verified-backup upgrade.
         storage.save(&original).unwrap();
-        assert_eq!(std::fs::read_dir(&root).unwrap().filter(|entry| entry.as_ref().unwrap().file_name().to_str().unwrap().starts_with("workspace.before-path-upgrade-")).count(), 3);
+        assert_eq!(
+            std::fs::read_dir(&root)
+                .unwrap()
+                .filter(|entry| entry
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_str()
+                    .unwrap()
+                    .starts_with("workspace.before-path-upgrade-"))
+                .count(),
+            3
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -641,10 +859,17 @@ mod tests {
         drop(db);
         let _lock = storage.acquire_lock().unwrap();
         let mut stages = vec![];
-        let backup = storage.upgrade_paths(|stage| stages.push(stage)).unwrap().unwrap();
+        let backup = storage
+            .upgrade_paths(|stage| stages.push(stage))
+            .unwrap()
+            .unwrap();
         assert_eq!(
             stages,
-            ["Backing up existing data…", "Converting workspace paths…", "Verifying upgraded data…"]
+            [
+                "Backing up existing data…",
+                "Converting workspace paths…",
+                "Verifying upgraded data…"
+            ]
         );
         assert_eq!(load(&backup, &root).unwrap(), Some(original.clone()));
         assert_eq!(
@@ -690,13 +915,22 @@ mod tests {
         let db = Connection::open(storage.path()).unwrap();
         db.pragma_update(None, "user_version", 999).unwrap();
         let bytes = std::fs::read(storage.path()).unwrap();
-        assert!(storage.upgrade_paths(|_| panic!("future schema must not start migration")).is_err());
+        assert!(
+            storage
+                .upgrade_paths(|_| panic!("future schema must not start migration"))
+                .is_err()
+        );
         assert_eq!(std::fs::read(storage.path()).unwrap(), bytes);
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
         db.pragma_update(None, "user_version", 1).unwrap();
-        db.execute("UPDATE projects SET payload='invalid json'", []).unwrap();
+        db.execute("UPDATE projects SET payload='invalid json'", [])
+            .unwrap();
         let bytes = std::fs::read(storage.path()).unwrap();
-        assert!(storage.upgrade_paths(|_| panic!("invalid data must not start migration")).is_err());
+        assert!(
+            storage
+                .upgrade_paths(|_| panic!("invalid data must not start migration"))
+                .is_err()
+        );
         assert_eq!(std::fs::read(storage.path()).unwrap(), bytes);
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
         drop(db);
@@ -708,8 +942,22 @@ mod tests {
         let old = Path::new("/old/workspace");
         let new = Path::new("/new/workspace");
         let signatures = [
-            serde_json::json!([1, "old project name", "brief", "/old/workspace/projects/p", []]),
-            serde_json::json!([1, 1, "old request", "date", "name", "/old/workspace/projects/p", null]),
+            serde_json::json!([
+                1,
+                "old project name",
+                "brief",
+                "/old/workspace/projects/p",
+                []
+            ]),
+            serde_json::json!([
+                1,
+                1,
+                "old request",
+                "date",
+                "name",
+                "/old/workspace/projects/p",
+                null
+            ]),
             serde_json::json!([[], [9], "/old/workspace/projects/p", "analyze", 1]),
         ];
         for (index, signature) in signatures.into_iter().enumerate() {
@@ -720,7 +968,9 @@ mod tests {
             }]});
             transform_paths(&mut value, old, true).unwrap();
             transform_paths(&mut value, new, false).unwrap();
-            let restored: Value = serde_json::from_str(value["runs"][0]["input_signature"].as_str().unwrap()).unwrap();
+            let restored: Value =
+                serde_json::from_str(value["runs"][0]["input_signature"].as_str().unwrap())
+                    .unwrap();
             let mut expected = signature;
             expected[[3, 5, 2][index]] = Value::String("/new/workspace/projects/p".into());
             assert_eq!(restored, expected);
@@ -733,18 +983,27 @@ mod tests {
         let understanding = serde_json::json!([
             inner, "understanding-v1", {"summary":"Read /old/workspace/projects/p", "questions":[]},
             false, "Keep /old/workspace/projects/p", "old source binding"
-        ]).to_string();
-        for original in [understanding.clone(), serde_json::json!([understanding, [[1,"old plan snapshot"]]]).to_string()] {
+        ])
+        .to_string();
+        for original in [
+            understanding.clone(),
+            serde_json::json!([understanding, [[1, "old plan snapshot"]]]).to_string(),
+        ] {
             let mut value = serde_json::json!({"runs":[{"project_plan":2,"input_signature":original}],
                 "automations":[{"plan_binding":{"input_signature":original}}]});
             transform_paths(&mut value, Path::new("/old/workspace"), true).unwrap();
             transform_paths(&mut value, Path::new("/new/workspace"), false).unwrap();
             let moved = value["runs"][0]["input_signature"].as_str().unwrap();
-            assert_eq!(value["automations"][0]["plan_binding"]["input_signature"], moved);
+            assert_eq!(
+                value["automations"][0]["plan_binding"]["input_signature"],
+                moved
+            );
             let parsed: Value = serde_json::from_str(moved).unwrap();
             let wrapped: Value = if parsed.as_array().unwrap().len() == 2 {
                 serde_json::from_str(parsed[0].as_str().unwrap()).unwrap()
-            } else { parsed };
+            } else {
+                parsed
+            };
             assert_eq!(wrapped[2]["summary"], "Read /old/workspace/projects/p");
             assert_eq!(wrapped[3], false);
             assert_eq!(wrapped[4], "Keep /old/workspace/projects/p");
@@ -761,9 +1020,21 @@ mod tests {
     #[test]
     fn signature_rewrite_preserves_nested_struct_order_and_whitespace() {
         let original = r#"[ [{"z":1,"a":2}], [], "/old/workspace/project", "analyze", 1 ]"#;
-        let rewritten = replace_signature_path(original, 2, &Value::String("projects/p".into())).unwrap();
-        assert_eq!(rewritten, original.replace("/old/workspace/project", "projects/p"));
-        assert_eq!(replace_signature_path(&rewritten, 2, &Value::String("/old/workspace/project".into())).unwrap(), original);
+        let rewritten =
+            replace_signature_path(original, 2, &Value::String("projects/p".into())).unwrap();
+        assert_eq!(
+            rewritten,
+            original.replace("/old/workspace/project", "projects/p")
+        );
+        assert_eq!(
+            replace_signature_path(
+                &rewritten,
+                2,
+                &Value::String("/old/workspace/project".into())
+            )
+            .unwrap(),
+            original
+        );
     }
 
     #[test]
@@ -792,50 +1063,124 @@ mod tests {
         let original = storage.load().unwrap().unwrap();
         // Reproduce v1 from this already captured dataset, never reopen the live workspace.
         let legacy_path = copy.join("legacy-upgrade-check.sqlite3");
-        save(&legacy_path, Path::new("/unrelated-snapshot-root"), &original).unwrap();
-        Connection::open(&legacy_path).unwrap().pragma_update(None, "user_version", 1).unwrap();
+        save(
+            &legacy_path,
+            Path::new("/unrelated-snapshot-root"),
+            &original,
+        )
+        .unwrap();
+        Connection::open(&legacy_path)
+            .unwrap()
+            .pragma_update(None, "user_version", 1)
+            .unwrap();
         let legacy = Storage::new(legacy_path.clone()).with_workspace_root(old.clone());
         let lock = legacy.acquire_lock().unwrap();
         let mut phases = vec![];
-        let backup = legacy.upgrade_paths(|phase| phases.push(phase)).unwrap().unwrap();
-        assert!(load(&backup, &old).unwrap().as_ref() == Some(&original), "upgrade backup changed snapshot data");
-        assert!(legacy.load().unwrap().as_ref() == Some(&original), "explicit upgrade changed snapshot data");
-        assert_eq!(phases, ["Backing up existing data…", "Converting workspace paths…", "Verifying upgraded data…"]);
-        assert!(legacy.upgrade_paths(|_| panic!("must not upgrade twice")).unwrap().is_none());
+        let backup = legacy
+            .upgrade_paths(|phase| phases.push(phase))
+            .unwrap()
+            .unwrap();
+        assert!(
+            load(&backup, &old).unwrap().as_ref() == Some(&original),
+            "upgrade backup changed snapshot data"
+        );
+        assert!(
+            legacy.load().unwrap().as_ref() == Some(&original),
+            "explicit upgrade changed snapshot data"
+        );
+        assert_eq!(
+            phases,
+            [
+                "Backing up existing data…",
+                "Converting workspace paths…",
+                "Verifying upgraded data…"
+            ]
+        );
+        assert!(
+            legacy
+                .upgrade_paths(|_| panic!("must not upgrade twice"))
+                .unwrap()
+                .is_none()
+        );
         drop(lock);
-        let signatures: Vec<_> = original.tasks().iter().map(|t| (t.id, original.research_result(t.id).map(|r| r.id), original.goal_execution_approved(t.id))).collect();
+        let signatures: Vec<_> = original
+            .tasks()
+            .iter()
+            .map(|t| {
+                (
+                    t.id,
+                    original.research_result(t.id).map(|r| r.id),
+                    original.goal_execution_approved(t.id),
+                )
+            })
+            .collect();
         storage.save(&original).unwrap();
-        assert!(storage.load().unwrap().as_ref() == Some(&original), "same-root save/load changed existing data");
-        assert_eq!(crate::workspace::initialize(copy.parent().unwrap(), None).unwrap(), copy);
+        assert!(
+            storage.load().unwrap().as_ref() == Some(&original),
+            "same-root save/load changed existing data"
+        );
+        assert_eq!(
+            crate::workspace::initialize(copy.parent().unwrap(), None).unwrap(),
+            copy
+        );
         let relocated = Storage::new(path.clone()).load().unwrap().unwrap();
         for (id, result, approved) in signatures {
-            assert_eq!(relocated.research_result(id).map(|r| r.id), result, "result validity changed for task {id}");
-            assert_eq!(relocated.goal_execution_approved(id), approved, "approval changed for task {id}");
+            assert_eq!(
+                relocated.research_result(id).map(|r| r.id),
+                result,
+                "result validity changed for task {id}"
+            );
+            assert_eq!(
+                relocated.goal_execution_approved(id),
+                approved,
+                "approval changed for task {id}"
+            );
         }
         for project in relocated.projects() {
             assert!(Path::new(&project.directory).starts_with(&copy));
             assert!(Path::new(&project.directory).is_dir());
         }
         for task in relocated.tasks() {
-            for attachment in &task.attachments { crate::attachments::resolve(&copy, attachment).unwrap(); }
+            for attachment in &task.attachments {
+                crate::attachments::resolve(&copy, attachment).unwrap();
+            }
         }
         for run in relocated.runs() {
-            for attachment in &run.attachments { crate::attachments::resolve(&copy, attachment).unwrap(); }
+            for attachment in &run.attachments {
+                crate::attachments::resolve(&copy, attachment).unwrap();
+            }
         }
         // Compare the entire store after resolving it back against the original root.
         Storage::new(path.clone()).save(&relocated).unwrap();
-        assert!(storage.load().unwrap().as_ref() == Some(&original), "relocation changed non-path data");
+        assert!(
+            storage.load().unwrap().as_ref() == Some(&original),
+            "relocation changed non-path data"
+        );
         let db = Connection::open(&path).unwrap();
-        assert_eq!(db.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0)).unwrap(), "ok");
+        assert_eq!(
+            db.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "ok"
+        );
         for table in ["projects", "runs"] {
             let mut statement = db.prepare(&format!("SELECT payload FROM {table}")).unwrap();
             for payload in statement.query_map([], |r| r.get::<_, String>(0)).unwrap() {
                 let value: Value = serde_json::from_str(&payload.unwrap()).unwrap();
                 for field in ["directory", "workspace_source"] {
-                    if let Some(path) = value[field].as_str().filter(|s| !s.is_empty()) { assert!(!Path::new(path).is_absolute(), "snapshot still has absolute operational paths"); }
+                    if let Some(path) = value[field].as_str().filter(|s| !s.is_empty()) {
+                        assert!(
+                            !Path::new(path).is_absolute(),
+                            "snapshot still has absolute operational paths"
+                        );
+                    }
                 }
             }
         }
-        println!("Snapshot verified: {} projects, {} tasks, {} runs; full roundtrip, result validity, approvals, attachments, relative paths, integrity_check", original.projects().len(), original.tasks().len(), original.runs().len());
+        println!(
+            "Snapshot verified: {} projects, {} tasks, {} runs; full roundtrip, result validity, approvals, attachments, relative paths, integrity_check",
+            original.projects().len(),
+            original.tasks().len(),
+            original.runs().len()
+        );
     }
 }

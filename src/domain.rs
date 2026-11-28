@@ -44,7 +44,7 @@ mod fixtures;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Stage {
     Backlog,
-    Planned,
+    #[serde(alias = "Planned", alias = "Todo")]
     InProgress,
     Review,
     Done,
@@ -52,13 +52,15 @@ pub enum Stage {
 }
 impl Stage {
     /// Workflow progression from planning through completion and cancellation.
-    pub const WORKFLOW_ORDER: [Self; 6] = [
-        Self::Backlog, Self::Planned, Self::InProgress,
-        Self::Review, Self::Cancelled, Self::Done,
-    ];
-    pub const ALL: [Self; 6] = [
+    pub const WORKFLOW_ORDER: [Self; 5] = [
         Self::Backlog,
-        Self::Planned,
+        Self::InProgress,
+        Self::Review,
+        Self::Cancelled,
+        Self::Done,
+    ];
+    pub const ALL: [Self; 5] = [
+        Self::Backlog,
         Self::InProgress,
         Self::Review,
         Self::Done,
@@ -67,7 +69,6 @@ impl Stage {
     pub fn label(self) -> &'static str {
         match self {
             Self::Backlog => "Backlog",
-            Self::Planned => "Todo",
             Self::InProgress => "In progress",
             Self::Review => "In review",
             Self::Done => "Done",
@@ -77,7 +78,6 @@ impl Stage {
     pub fn key(self) -> &'static str {
         match self {
             Self::Backlog => "backlog",
-            Self::Planned => "todo",
             Self::InProgress => "in-progress",
             Self::Review => "review",
             Self::Done => "done",
@@ -93,48 +93,11 @@ impl Stage {
             || self.label().to_lowercase().replace(' ', "-") == value
             || matches!(
                 (self, value.as_str()),
-                (Self::Planned, "planned")
-                    | (Self::InProgress, "doing")
+                (Self::InProgress, "doing")
                     | (Self::InProgress, "inprogress")
                     | (Self::Review, "in-review")
                     | (Self::Cancelled, "canceled")
             )
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Priority {
-    None,
-    Low,
-    Medium,
-    High,
-    Urgent,
-}
-impl Priority {
-    pub const ALL: [Self; 5] = [
-        Self::None,
-        Self::Low,
-        Self::Medium,
-        Self::High,
-        Self::Urgent,
-    ];
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::None => "No priority",
-            Self::Low => "Low",
-            Self::Medium => "Medium",
-            Self::High => "High",
-            Self::Urgent => "Urgent",
-        }
-    }
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Urgent => "urgent",
-        }
     }
 }
 
@@ -165,10 +128,7 @@ pub struct Task {
     #[serde(default = "legacy_approved_plan")]
     pub approved_plan: Option<String>,
     pub stage: Stage,
-    pub priority: Priority,
     pub labels: Vec<String>,
-    pub cycle: Option<String>,
-    pub bucket: String,
     pub due_date: String,
     pub parent_id: Option<u64>,
     pub comments: Vec<Comment>,
@@ -434,9 +394,15 @@ fn deserialize_runs<'de, D: serde::Deserializer<'de>>(
 pub struct Store {
     #[serde(default = "default_automation_schema_version")]
     automation_schema_version: TrackedScalar<u32>,
-    #[serde(default = "automation_tracked", deserialize_with = "deserialize_automations")]
+    #[serde(
+        default = "automation_tracked",
+        deserialize_with = "deserialize_automations"
+    )]
     automations: TrackedVec<crate::automation::AutomationDefinition>,
-    #[serde(default = "occurrence_tracked", deserialize_with = "deserialize_occurrences")]
+    #[serde(
+        default = "occurrence_tracked",
+        deserialize_with = "deserialize_occurrences"
+    )]
     automation_occurrences: TrackedVec<crate::automation::AutomationOccurrence>,
     #[serde(default)]
     report_publishing: TrackedScalar<crate::report_publish::PublishingConfig>,
@@ -446,11 +412,17 @@ pub struct Store {
     /// This is process-local read state, never a persisted domain change.
     #[serde(skip)]
     lazy_bodies: std::collections::BTreeSet<u64>,
-    #[serde(default = "publication_tracked", deserialize_with = "deserialize_publications")]
+    #[serde(
+        default = "publication_tracked",
+        deserialize_with = "deserialize_publications"
+    )]
     publications: TrackedList<crate::report_publish::Publication>,
     #[serde(default)]
     pub(crate) notification_config_value: TrackedScalar<crate::notification::NotificationConfig>,
-    #[serde(default = "notification_job_tracked", deserialize_with = "deserialize_notification_jobs")]
+    #[serde(
+        default = "notification_job_tracked",
+        deserialize_with = "deserialize_notification_jobs"
+    )]
     pub(crate) notification_jobs: TrackedList<crate::notification::NotificationJob>,
     #[serde(default = "task_tracked", deserialize_with = "deserialize_tasks")]
     tasks: TrackedVec<Task>,
@@ -472,7 +444,10 @@ pub struct Store {
     opencode_path: TrackedScalar<String>,
     #[serde(default)]
     default_model: TrackedScalar<String>,
-    #[serde(default = "model_profile_tracked", deserialize_with = "deserialize_model_profiles")]
+    #[serde(
+        default = "model_profile_tracked",
+        deserialize_with = "deserialize_model_profiles"
+    )]
     model_profiles: TrackedList<crate::model_profiles::ModelProfile>,
     #[serde(default)]
     active_model_profile: TrackedScalar<Option<String>>,
@@ -648,11 +623,16 @@ impl Store {
         }
     }
     pub fn research_agent(&self, kind: crate::research::ResearchKind) -> &str {
-        self.research_config().agents[kind.index()].as_deref()
+        self.research_config().agents[kind.index()]
+            .as_deref()
             .unwrap_or(&self.research_config().default_agent)
     }
     pub fn agent_path(&self, agent: &str) -> &str {
-        if agent == "Codex" { &self.research_config().codex_path } else { self.opencode_path() }
+        if agent == "Codex" {
+            &self.research_config().codex_path
+        } else {
+            self.opencode_path()
+        }
     }
     pub fn valid_research_model(&self, kind: crate::research::ResearchKind) -> bool {
         match self.research_agent(kind) {
@@ -722,7 +702,8 @@ impl Store {
                 .iter()
                 .any(|t| Some(t.id) == topic && t.project_id == project)
             {
-                if let Ok(topic) = self.create_topic(project, self.task(id).unwrap().title.clone()) {
+                if let Ok(topic) = self.create_topic(project, self.task(id).unwrap().title.clone())
+                {
                     self.task_mut(id).unwrap().topic_id = Some(topic);
                 }
             }
@@ -731,7 +712,10 @@ impl Store {
         self.topics.retain_tracked(|topic| {
             !matches!(topic.name.as_str(), "待归类" | "未归类")
                 || self.tasks.iter().any(|t| t.topic_id == Some(topic.id))
-                || self.research_requests.iter().any(|r| r.topic_id == Some(topic.id))
+                || self
+                    .research_requests
+                    .iter()
+                    .any(|r| r.topic_id == Some(topic.id))
         });
         // Missing fields in old files differ from explicit None in a current, unapproved plan.
         // Only migration from the old format or an unmanaged legacy Goal can establish approval.
@@ -898,23 +882,36 @@ impl Store {
         let mut current = Some(id);
         let mut visited = Vec::new();
         while let Some(id) = current {
-            if visited.contains(&id) { break; }
+            if visited.contains(&id) {
+                break;
+            }
             visited.push(id);
-            let Some(task) = self.task(id) else { break; };
-            if task.archived { return true; }
-            current = task.parent_id.or_else(|| task.research.as_ref()
-                .filter(|r| r.goal_id != id).map(|r| r.goal_id));
+            let Some(task) = self.task(id) else {
+                break;
+            };
+            if task.archived {
+                return true;
+            }
+            current = task.parent_id.or_else(|| {
+                task.research
+                    .as_ref()
+                    .filter(|r| r.goal_id != id)
+                    .map(|r| r.goal_id)
+            });
         }
         false
     }
     pub fn request_is_archived(&self, request: &crate::request_planning::ResearchRequest) -> bool {
-        self.topics.iter().any(|t| Some(t.id) == request.topic_id && t.archived)
+        self.topics
+            .iter()
+            .any(|t| Some(t.id) == request.topic_id && t.archived)
             || (!request.goal_ids.is_empty()
                 && request.goal_ids.iter().all(|id| self.task_is_archived(*id)))
     }
     pub fn run_is_archived(&self, run: &AgentRun) -> bool {
         if run.project_plan.is_some() {
-            self.request_for_run(run.id).is_some_and(|r| self.request_is_archived(r))
+            self.request_for_run(run.id)
+                .is_some_and(|r| self.request_is_archived(r))
         } else {
             self.task_is_archived(run.task_id)
         }
@@ -956,7 +953,10 @@ impl Store {
         !self.run_is_automation_owned(run) && !self.run_is_archived(run)
     }
     pub fn latest_ordinary_result_run(&self) -> Option<&AgentRun> {
-        self.runs.iter().rev().find(|run| self.run_is_ordinary_result(run))
+        self.runs
+            .iter()
+            .rev()
+            .find(|run| self.run_is_ordinary_result(run))
     }
     /// Count tasks, not attempts: current work and saved completed results.
     pub fn progress_result_task_count(&self) -> usize {
@@ -1085,7 +1085,10 @@ impl Store {
     pub fn replace_projects(&mut self, projects: Vec<Project>) {
         self.projects.replace_tracked(projects);
     }
-    pub(in crate::domain) fn load_projects(&mut self, projects: Vec<Project>) -> Result<(), String> {
+    pub(in crate::domain) fn load_projects(
+        &mut self,
+        projects: Vec<Project>,
+    ) -> Result<(), String> {
         self.projects = tracked::project_from(projects)?;
         Ok(())
     }
@@ -1190,8 +1193,26 @@ impl Store {
     pub fn replace_policies(&mut self, policies: Vec<StagePolicy>) {
         self.policies.replace_tracked(policies);
     }
-    pub(in crate::domain) fn load_policies(&mut self, policies: Vec<StagePolicy>) -> Result<(), String> {
-        self.policies = tracked::policy_from(policies)?;
+    pub(in crate::domain) fn load_policies(
+        &mut self,
+        policies: Vec<StagePolicy>,
+    ) -> Result<(), String> {
+        let mut merged: Vec<StagePolicy> = Vec::new();
+        for policy in policies {
+            if let Some(existing) = merged.iter_mut().find(|item| item.stage == policy.stage) {
+                if existing.model.is_empty() && !policy.model.is_empty() {
+                    existing.model = policy.model;
+                }
+                if existing.prompt.is_empty() && !policy.prompt.is_empty() {
+                    existing.prompt = policy.prompt;
+                }
+                existing.agent = policy.agent;
+                existing.auto_start |= policy.auto_start;
+                continue;
+            }
+            merged.push(policy);
+        }
+        self.policies = tracked::policy_from(merged)?;
         Ok(())
     }
 
@@ -1235,7 +1256,8 @@ impl Store {
 
     pub fn run_at_mut(&mut self, index: usize) -> Option<&mut AgentRun> {
         let id = self.runs.get(index)?.id;
-        self.runs.tracked_mut(crate::persistence_journal::EntityKey::Run(id))
+        self.runs
+            .tracked_mut(crate::persistence_journal::EntityKey::Run(id))
     }
 
     /// O(1) run mutation when the caller already holds an id→index map built in
@@ -1288,16 +1310,12 @@ impl Store {
         self.run_at_mut(index)
     }
 
-    pub fn last_occurrence_mut(
-        &mut self,
-    ) -> Option<&mut crate::automation::AutomationOccurrence> {
+    pub fn last_occurrence_mut(&mut self) -> Option<&mut crate::automation::AutomationOccurrence> {
         let index = self.automation_occurrences.len().checked_sub(1)?;
         self.occurrence_at_mut(index)
     }
 
-    pub fn last_automation_mut(
-        &mut self,
-    ) -> Option<&mut crate::automation::AutomationDefinition> {
+    pub fn last_automation_mut(&mut self) -> Option<&mut crate::automation::AutomationDefinition> {
         let index = self.automations.len().checked_sub(1)?;
         self.automation_at_mut(index)
     }
@@ -1316,12 +1334,18 @@ impl Store {
         Some(next)
     }
 
-    pub fn remove_automation(&mut self, id: u64) -> Option<crate::automation::AutomationDefinition> {
+    pub fn remove_automation(
+        &mut self,
+        id: u64,
+    ) -> Option<crate::automation::AutomationDefinition> {
         self.automations
             .remove_tracked(crate::persistence_journal::EntityKey::Automation(id))
     }
 
-    pub fn remove_occurrence(&mut self, id: u64) -> Option<crate::automation::AutomationOccurrence> {
+    pub fn remove_occurrence(
+        &mut self,
+        id: u64,
+    ) -> Option<crate::automation::AutomationOccurrence> {
         self.automation_occurrences
             .remove_tracked(crate::persistence_journal::EntityKey::Occurrence(id))
     }
@@ -1332,11 +1356,17 @@ impl Store {
             .remove_tracked(crate::persistence_journal::EntityKey::Run(id))
     }
 
-    pub fn retain_automations(&mut self, keep: impl FnMut(&crate::automation::AutomationDefinition) -> bool) {
+    pub fn retain_automations(
+        &mut self,
+        keep: impl FnMut(&crate::automation::AutomationDefinition) -> bool,
+    ) {
         self.automations.retain_tracked(keep);
     }
 
-    pub fn retain_occurrences(&mut self, keep: impl FnMut(&crate::automation::AutomationOccurrence) -> bool) {
+    pub fn retain_occurrences(
+        &mut self,
+        keep: impl FnMut(&crate::automation::AutomationOccurrence) -> bool,
+    ) {
         self.automation_occurrences.retain_tracked(keep);
     }
 
@@ -1430,10 +1460,14 @@ impl Store {
             deltas.push(MetadataDelta::RunIdFloor(*self.run_id_floor.get()));
         }
         if self.default_model.is_dirty() {
-            deltas.push(MetadataDelta::DefaultModel(self.default_model.get().clone()));
+            deltas.push(MetadataDelta::DefaultModel(
+                self.default_model.get().clone(),
+            ));
         }
         if self.opencode_path.is_dirty() {
-            deltas.push(MetadataDelta::OpenCodePath(self.opencode_path.get().clone()));
+            deltas.push(MetadataDelta::OpenCodePath(
+                self.opencode_path.get().clone(),
+            ));
         }
         if self.liquid_glass.is_dirty() {
             deltas.push(MetadataDelta::LiquidGlass(*self.liquid_glass.get()));
@@ -1447,7 +1481,9 @@ impl Store {
             deltas.push(MetadataDelta::Appearance(*self.appearance.get()));
         }
         if self.last_active_project.is_dirty() {
-            deltas.push(MetadataDelta::LastActiveProject(*self.last_active_project.get()));
+            deltas.push(MetadataDelta::LastActiveProject(
+                *self.last_active_project.get(),
+            ));
         }
         if self.automation_schema_version.is_dirty() {
             deltas.push(MetadataDelta::AutomationSchemaVersion(
@@ -1455,7 +1491,9 @@ impl Store {
             ));
         }
         if self.max_concurrent_runs.is_dirty() {
-            deltas.push(MetadataDelta::MaxConcurrentRuns(*self.max_concurrent_runs.get()));
+            deltas.push(MetadataDelta::MaxConcurrentRuns(
+                *self.max_concurrent_runs.get(),
+            ));
         }
         if self.max_concurrent_automations.is_dirty() {
             deltas.push(MetadataDelta::MaxConcurrentAutomations(
@@ -1463,7 +1501,9 @@ impl Store {
             ));
         }
         if self.research_config.is_dirty() {
-            deltas.push(MetadataDelta::ResearchConfig(self.research_config.get().clone()));
+            deltas.push(MetadataDelta::ResearchConfig(
+                self.research_config.get().clone(),
+            ));
         }
         if self.model_profiles.is_dirty() {
             deltas.push(MetadataDelta::ModelProfiles(self.model_profiles.to_vec()));
@@ -1482,7 +1522,9 @@ impl Store {
             ));
         }
         if self.notification_jobs.is_dirty() {
-            deltas.push(MetadataDelta::NotificationJobs(self.notification_jobs.to_vec()));
+            deltas.push(MetadataDelta::NotificationJobs(
+                self.notification_jobs.to_vec(),
+            ));
         }
         if self.report_publishing.is_dirty() {
             deltas.push(MetadataDelta::PublishingConfig(
@@ -1499,7 +1541,10 @@ impl Store {
 
     /// Apply one typed journal change to a durable-base replica. Used by the
     /// persistence worker; never for UI dirty discovery.
-    pub(crate) fn apply_entity_change(&mut self, change: &crate::persistence_journal::EntityChange) {
+    pub(crate) fn apply_entity_change(
+        &mut self,
+        change: &crate::persistence_journal::EntityChange,
+    ) {
         use crate::persistence_journal::{EntityChange, EntityKey, EntityPayload};
         match change {
             EntityChange::Delete(key) => match key {
@@ -1688,7 +1733,9 @@ impl Store {
     }
 
     pub(crate) fn dirty_epoch(&self) -> u64 {
-        let mut epoch = self.automations.epoch()
+        let mut epoch = self
+            .automations
+            .epoch()
             .saturating_add(self.automation_occurrences.epoch())
             .saturating_add(self.runs.epoch())
             .saturating_add(self.tasks.epoch())
@@ -1905,19 +1952,14 @@ impl Store {
     pub fn appearance_mut(&mut self) -> &mut crate::appearance::Appearance {
         &mut self.appearance
     }
-    pub fn report_publishing_mut(
-        &mut self,
-    ) -> &mut crate::report_publish::PublishingConfig {
+    pub fn report_publishing_mut(&mut self) -> &mut crate::report_publish::PublishingConfig {
         &mut self.report_publishing
     }
 
     pub fn push_publication(&mut self, publication: crate::report_publish::Publication) {
         self.publications.push_tracked(publication);
     }
-    pub fn publication_mut(
-        &mut self,
-        id: &str,
-    ) -> Option<&mut crate::report_publish::Publication> {
+    pub fn publication_mut(&mut self, id: &str) -> Option<&mut crate::report_publish::Publication> {
         let index = self
             .publications
             .iter()
@@ -1937,10 +1979,7 @@ impl Store {
     ) {
         self.publications.retain_tracked(keep);
     }
-    pub fn replace_publications(
-        &mut self,
-        publications: Vec<crate::report_publish::Publication>,
-    ) {
+    pub fn replace_publications(&mut self, publications: Vec<crate::report_publish::Publication>) {
         self.publications.replace_tracked(publications);
     }
     pub(in crate::domain) fn load_publications(
@@ -1969,13 +2008,13 @@ impl Store {
     ) {
         self.model_profiles.retain_tracked(keep);
     }
-    pub fn replace_model_profiles(
+    pub fn replace_model_profiles(&mut self, profiles: Vec<crate::model_profiles::ModelProfile>) {
+        self.model_profiles.replace_tracked(profiles);
+    }
+    pub(in crate::domain) fn load_model_profiles(
         &mut self,
         profiles: Vec<crate::model_profiles::ModelProfile>,
     ) {
-        self.model_profiles.replace_tracked(profiles);
-    }
-    pub(in crate::domain) fn load_model_profiles(&mut self, profiles: Vec<crate::model_profiles::ModelProfile>) {
         self.model_profiles.load(profiles);
     }
 
@@ -2140,7 +2179,11 @@ impl Store {
         let topic_id = if parent_id.is_none() {
             Some(match topic {
                 Some(id) => {
-                    if !self.topics.iter().any(|t| t.id == id && t.project_id == project_id && !t.archived) {
+                    if !self
+                        .topics
+                        .iter()
+                        .any(|t| t.id == id && t.project_id == project_id && !t.archived)
+                    {
                         return Err("Choose an active topic in the same project.".into());
                     }
                     id
@@ -2189,10 +2232,7 @@ impl Store {
             topic_id,
             approved_plan: None,
             stage,
-            priority: Priority::Medium,
             labels: vec![],
-            cycle: None,
-            bucket: "Now".into(),
             due_date: String::new(),
             parent_id,
             comments: vec![],
@@ -2210,74 +2250,146 @@ impl Store {
         if name.is_empty() || name.chars().count() > 160 {
             return Err("Enter a project name between 1 and 160 characters.".into());
         }
-        let current = self.projects.iter().find(|p| p.id == project).ok_or("Project not found.")?;
-        if current.name == name { return Ok(()); }
-        let valid: Vec<_> = self.runs.iter().filter(|r| r.project_plan == Some(project)).filter_map(|r| {
-            let request = self.request_for_run(r.id).map(|q| q.id);
-            let signature = match request {
-                Some(id) => self.request_plan_signature(id),
-                None => self.project_plan_signature(project),
-            };
-            (signature.as_ref().ok() == Some(&r.input_signature)).then_some((r.id, request))
-        }).collect();
+        let current = self
+            .projects
+            .iter()
+            .find(|p| p.id == project)
+            .ok_or("Project not found.")?;
+        if current.name == name {
+            return Ok(());
+        }
+        let valid: Vec<_> = self
+            .runs
+            .iter()
+            .filter(|r| r.project_plan == Some(project))
+            .filter_map(|r| {
+                let request = self.request_for_run(r.id).map(|q| q.id);
+                let signature = match request {
+                    Some(id) => self.request_plan_signature(id),
+                    None => self.project_plan_signature(project),
+                };
+                (signature.as_ref().ok() == Some(&r.input_signature)).then_some((r.id, request))
+            })
+            .collect();
         self.project_mut(project).unwrap().name = name.into();
         for (run, request) in valid {
             let signature = match request {
                 Some(id) => self.request_plan_signature(id),
                 None => self.project_plan_signature(project),
-            }.expect("Renaming a project cannot invalidate its destination");
+            }
+            .expect("Renaming a project cannot invalidate its destination");
             self.run_mut(run).unwrap().input_signature = signature;
         }
         Ok(())
     }
 
     /// Shared preflight for the confirmation dialog and the final mutation guard.
-    pub fn topic_move_blockers(&self, topic: u64, batch: Option<&crate::batch::TodoBatch>) -> Vec<String> {
-        let ids: Vec<_> = self.tasks.iter().filter(|t| self.task_topic(t.id).is_some_and(|t| t.id == topic)).map(|t| t.id).collect();
+    pub fn topic_move_blockers(
+        &self,
+        topic: u64,
+        batch: Option<&crate::batch::TodoBatch>,
+    ) -> Vec<String> {
+        let ids: Vec<_> = self
+            .tasks
+            .iter()
+            .filter(|t| self.task_topic(t.id).is_some_and(|t| t.id == topic))
+            .map(|t| t.id)
+            .collect();
         let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
-        let requests: Vec<_> = self.research_requests.iter().filter(|r|
-            r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| id_set.contains(id))).collect();
-        let requests_by_run: std::collections::HashMap<u64, &crate::request_planning::ResearchRequest> =
-            requests
-                .iter()
-                .filter_map(|request| request.planning_run_id.map(|run| (run, *request)))
-                .collect();
-        let task_name = |id| self.task(id).map(|t| format!("{} · {}", self.identifier(t), t.title)).unwrap_or_else(|| format!("Task #{id}"));
+        let requests: Vec<_> = self
+            .research_requests
+            .iter()
+            .filter(|r| {
+                r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| id_set.contains(id))
+            })
+            .collect();
+        let requests_by_run: std::collections::HashMap<
+            u64,
+            &crate::request_planning::ResearchRequest,
+        > = requests
+            .iter()
+            .filter_map(|request| request.planning_run_id.map(|run| (run, *request)))
+            .collect();
+        let task_name = |id| {
+            self.task(id)
+                .map(|t| format!("{} · {}", self.identifier(t), t.title))
+                .unwrap_or_else(|| format!("Task #{id}"))
+        };
         let mut blockers = vec![];
         for run in &self.runs {
             let request = requests_by_run.get(&run.id).copied();
-            if !(run.project_plan.is_none() && id_set.contains(&run.task_id) || request.is_some()) { continue; }
+            if !(run.project_plan.is_none() && id_set.contains(&run.task_id) || request.is_some()) {
+                continue;
+            }
             let action = match run.status.as_str() {
-                "Queued" => "Open Progress and use Stop task to cancel this queued attempt or retry. If its goal is in the batch queue, also use Stop topic queue, or wait for the queue to finish.",
-                "Running" => "Wait for completion, or open Progress and use Stop task. Wait until stopping finishes before moving.",
-                "Recovering" => "Wait for recovery to finish, then finish or stop the task. To abandon recovery, archive the topic and confirm Stop and archive; wait for stopping to finish, then restore it if needed.",
-                "Cancelling" => "A stop has already been requested. Wait until the status changes to Stopped; do not submit another stop.",
-                "Interrupted" if self.is_recovery_candidate(run) => "Resume from Paused projects and finish the work, or archive the topic and confirm Stop and archive to abandon it. Wait for stopping to finish, then restore the topic if needed.",
+                "Queued" => {
+                    "Open Progress and use Stop task to cancel this queued attempt or retry. If its goal is in the batch queue, also use Stop topic queue, or wait for the queue to finish."
+                }
+                "Running" => {
+                    "Wait for completion, or open Progress and use Stop task. Wait until stopping finishes before moving."
+                }
+                "Recovering" => {
+                    "Wait for recovery to finish, then finish or stop the task. To abandon recovery, archive the topic and confirm Stop and archive; wait for stopping to finish, then restore it if needed."
+                }
+                "Cancelling" => {
+                    "A stop has already been requested. Wait until the status changes to Stopped; do not submit another stop."
+                }
+                "Interrupted" if self.is_recovery_candidate(run) => {
+                    "Resume from Paused projects and finish the work, or archive the topic and confirm Stop and archive to abandon it. Wait for stopping to finish, then restore the topic if needed."
+                }
                 _ => continue,
             };
-            let name = request.map(|r| format!("Research request #{} · {} (planning)", r.id, r.input))
+            let name = request
+                .map(|r| format!("Research request #{} · {} (planning)", r.id, r.input))
                 .unwrap_or_else(|| task_name(run.task_id));
-            blockers.push(format!("{name} — {} (run #{})\n  {}", run.status, run.id, action));
+            blockers.push(format!(
+                "{name} — {} (run #{})\n  {}",
+                run.status, run.id, action
+            ));
         }
         if let Some(batch) = batch.filter(|b| b.state != crate::batch::BatchState::Finished) {
             for id in &batch.items {
-                if !id_set.contains(id) || !batch.contains_pending(*id) { continue; }
-                let state = if matches!(batch.state, crate::batch::BatchState::Paused(_)) { "Paused batch queue" } else { "Pending batch queue" };
-                let children: Vec<_> = self.tasks.iter().filter(|t| t.parent_id == Some(*id) && !t.stage.is_closed() && self.research_result(t.id).is_none()).map(|t| task_name(t.id)).collect();
-                let children = if children.is_empty() { String::new() } else { format!("\n  Pending child tasks: {}", children.join("; ")) };
+                if !id_set.contains(id) || !batch.contains_pending(*id) {
+                    continue;
+                }
+                let state = if matches!(batch.state, crate::batch::BatchState::Paused(_)) {
+                    "Paused batch queue"
+                } else {
+                    "Pending batch queue"
+                };
+                let children: Vec<_> = self
+                    .tasks
+                    .iter()
+                    .filter(|t| {
+                        t.parent_id == Some(*id)
+                            && !t.stage.is_closed()
+                            && self.research_result(t.id).is_none()
+                    })
+                    .map(|t| task_name(t.id))
+                    .collect();
+                let children = if children.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n  Pending child tasks: {}", children.join("; "))
+                };
                 blockers.push(format!("{} — {state}{children}\n  Finish the queue, or use Stop topic queue in the queue bar. Stop topic queue affects the entire batch, including other topics; pausing alone does not release it.", task_name(*id)));
             }
         }
         for request in requests {
-            if request.goal_ids.iter().any(|id| !id_set.contains(id)) || request.topic_id.is_some_and(|id| id != topic) {
+            if request.goal_ids.iter().any(|id| !id_set.contains(id))
+                || request.topic_id.is_some_and(|id| id != topic)
+            {
                 let goals: Vec<_> = request.goal_ids.iter().map(|id| task_name(*id)).collect();
                 blockers.push(format!("Research request #{} · {} — links multiple topics\n  Linked goals: {}. Reconcile the request's topic and goal membership before moving; stopping tasks does not repair this relationship.", request.id, request.input, goals.join("; ")));
             }
         }
         for task in &self.tasks {
             let inside = id_set.contains(&task.id);
-            let links = task.parent_id.into_iter().chain(task.research.iter().flat_map(|r|
-                std::iter::once(r.goal_id).chain(r.depends_on.iter().copied())));
+            let links = task.parent_id.into_iter().chain(
+                task.research
+                    .iter()
+                    .flat_map(|r| std::iter::once(r.goal_id).chain(r.depends_on.iter().copied())),
+            );
             let mut seen = std::collections::HashSet::new();
             for id in links.filter(|id| inside != id_set.contains(id)) {
                 if seen.insert(id) {
@@ -2357,9 +2469,9 @@ impl Store {
             return None;
         }
         if let Some(goal) = self.owning_research_goal(id) {
-            let signature = approved.entry(goal).or_insert_with(|| {
-                self.goal_plan_signature_after(goal, moved, new_project)
-            });
+            let signature = approved
+                .entry(goal)
+                .or_insert_with(|| self.goal_plan_signature_after(goal, moved, new_project));
             let approved_now = self.task(goal).is_some_and(|task| {
                 let Some(research) = &task.research else {
                     return false;
@@ -2493,21 +2605,49 @@ impl Store {
     }
 
     pub fn move_topic_project(&mut self, topic: u64, project: u64) -> Result<(), String> {
-        let source = self.topics.iter().find(|t| t.id == topic).ok_or("Topic not found.")?.project_id;
-        if !self.projects.iter().any(|p| p.id == project) { return Err("Project not found.".into()); }
-        if source == project { return Ok(()); }
-        let ids: Vec<_> = self.tasks.iter().filter(|t| self.task_topic(t.id).is_some_and(|t| t.id == topic)).map(|t| t.id).collect();
+        let source = self
+            .topics
+            .iter()
+            .find(|t| t.id == topic)
+            .ok_or("Topic not found.")?
+            .project_id;
+        if !self.projects.iter().any(|p| p.id == project) {
+            return Err("Project not found.".into());
+        }
+        if source == project {
+            return Ok(());
+        }
+        let ids: Vec<_> = self
+            .tasks
+            .iter()
+            .filter(|t| self.task_topic(t.id).is_some_and(|t| t.id == topic))
+            .map(|t| t.id)
+            .collect();
         let id_set: std::collections::HashSet<u64> = ids.iter().copied().collect();
-        let requests: Vec<_> = self.research_requests.iter().filter(|r|
-            r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| id_set.contains(id))).map(|r| r.id).collect();
+        let requests: Vec<_> = self
+            .research_requests
+            .iter()
+            .filter(|r| {
+                r.topic_id == Some(topic) || r.goal_ids.iter().any(|id| id_set.contains(id))
+            })
+            .map(|r| r.id)
+            .collect();
         let request_set: std::collections::HashSet<u64> = requests.iter().copied().collect();
         let blockers = self.topic_move_blockers(topic, None);
-        if !blockers.is_empty() { return Err(blockers.join("\n\n")); }
-        let planning_runs: std::collections::HashSet<u64> = self.research_requests.iter()
+        if !blockers.is_empty() {
+            return Err(blockers.join("\n\n"));
+        }
+        let planning_runs: std::collections::HashSet<u64> = self
+            .research_requests
+            .iter()
             .filter(|r| request_set.contains(&r.id))
             .filter_map(|r| r.planning_run_id)
             .collect();
-        let approved: Vec<_> = ids.iter().copied().filter(|id| self.goal_execution_approved(*id)).collect();
+        let approved: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| self.goal_execution_approved(*id))
+            .collect();
         // One pass over run history builds both the id→index map used for O(1)
         // writes and the latest reusable result per task used by reusable-result
         // validation and the prospective signature walk. No per-id rescans.
@@ -2583,7 +2723,8 @@ impl Store {
         for id in ids.iter().copied() {
             let mut task = self.task_mut(id).unwrap();
             task.project_id = project;
-            task.activity.push(activity_event("Topic moved to another project"));
+            task.activity
+                .push(activity_event("Topic moved to another project"));
         }
         for goal in approved {
             self.task_mut(goal).unwrap().approved_plan =
@@ -2659,20 +2800,20 @@ impl Store {
     /// command preflight. It never mutates the task and never writes approval.
     pub(crate) fn validate_stage_transition(&self, id: u64, stage: Stage) -> Result<(), String> {
         let task = self.task(id).ok_or("Task not found.")?;
-        if stage == Stage::Done
+        if (stage == Stage::Done || stage == Stage::Review)
             && task.research.as_ref().is_some_and(|research| {
-                research.kind == crate::research::ResearchKind::Goal
-                    && research.requires_approval
+                research.kind == crate::research::ResearchKind::Goal && research.requires_approval
             })
         {
             let children = self.research_children(id);
             if children.is_empty()
                 || self.validate_goal_dependencies(id).is_err()
-                || children.iter().any(|child| {
-                    self.task(*child)
-                        .is_none_or(|task| task.stage != Stage::Done)
-                        || self.research_result(*child).is_none()
-                })
+                || (stage == Stage::Done
+                    && children.iter().any(|child| {
+                        self.task(*child)
+                            .is_none_or(|task| task.stage != Stage::Done)
+                            || self.research_result(*child).is_none()
+                    }))
             {
                 return Err(
                     "Complete this goal's research steps and final report before marking it Done."
@@ -2680,27 +2821,30 @@ impl Store {
                 );
             }
         }
-        if stage == Stage::Planned
-            && task.research.as_ref().is_some_and(|research| {
-                research.kind == crate::research::ResearchKind::Goal
-            })
+        if stage == Stage::InProgress
+            && task
+                .research
+                .as_ref()
+                .is_some_and(|research| research.kind == crate::research::ResearchKind::Goal)
         {
             self.validate_goal_dependencies(id)?;
         }
         if task.archived {
             return Err("Restore the archived task before changing its stage.".into());
         }
-        if task.research.as_ref().is_some_and(|r| r.requires_approval)
-            && matches!(task.stage, Stage::Backlog | Stage::Cancelled)
-            && !matches!(stage, Stage::Backlog | Stage::Planned | Stage::Cancelled)
-        {
-            return Err("Approve this research topic by moving it to Todo first.".into());
-        }
         Ok(())
+    }
+    /// Approve the current plan without moving through an intermediate stage.
+    pub fn approve_goal_plan(&mut self, id: u64) -> Option<String> {
+        let signature = self.goal_plan_signature(id)?;
+        self.validate_goal_dependencies(id).ok()?;
+        let task = self.task_mut(id)?;
+        task.approved_plan = Some(signature.clone());
+        Some(signature)
     }
     pub fn set_stage(&mut self, id: u64, stage: Stage) -> Result<(), String> {
         self.validate_stage_transition(id, stage)?;
-        let approval = if stage == Stage::Planned
+        let approval = if stage == Stage::InProgress
             && self.task(id).is_some_and(|t| {
                 t.research
                     .as_ref()
@@ -2731,7 +2875,9 @@ impl Store {
     pub fn set_parent(&mut self, id: u64, parent_id: Option<u64>) -> Result<(), String> {
         let task = self.task(id).ok_or("Task not found.")?;
         let project_id = task.project_id;
-        if task.parent_id == parent_id { return Ok(()); }
+        if task.parent_id == parent_id {
+            return Ok(());
+        }
         if let Some(r) = &task.research {
             let required = if r.kind == crate::research::ResearchKind::Goal {
                 None
@@ -2803,9 +2949,7 @@ impl Store {
     }
     pub fn prepare_run(&self, id: u64) -> Result<AgentRun, String> {
         if self.research_pending_approval(id) {
-            return Err(
-                "Approve the complete research goal in Todo before running its steps.".into(),
-            );
+            return Err("Review and run the research goal from its detail page.".into());
         }
         crate::research::prepare_run(self, id)
     }
@@ -2966,9 +3110,9 @@ impl Store {
                 .runs
                 .iter()
                 .filter(|run| {
-                    run.planning_owner.as_ref().is_some_and(|owner| {
-                        owner.request_id == id && owner.revision == revision
-                    })
+                    run.planning_owner
+                        .as_ref()
+                        .is_some_and(|owner| owner.request_id == id && owner.revision == revision)
                 })
                 .map(|run| run.id)
                 .max();
@@ -3038,18 +3182,10 @@ fn matches_term(task: &Task, term: &str) -> bool {
     if let Some((field, values)) = term.split_once(':') {
         return values.split(',').any(|value| match field {
             "status" | "stage" => task.stage.matches(value),
-            "priority" => {
-                task.priority.key() == value || task.priority.label().to_lowercase() == value
-            }
             "label" | "labels" => task
                 .labels
                 .iter()
                 .any(|label| label.to_lowercase() == value),
-            "cycle" => task
-                .cycle
-                .as_ref()
-                .is_some_and(|cycle| cycle.to_lowercase() == value),
-            "bucket" => task.bucket.to_lowercase() == value,
             _ => false,
         });
     }
@@ -3075,12 +3211,24 @@ mod tests {
         assert_eq!(store.visible_projects().count(), user_projects);
         assert!(store.visible_projects().all(|project| project.id != id));
         assert_eq!(
-            store.automation_project().map(|project| project.name.as_str()),
+            store
+                .automation_project()
+                .map(|project| project.name.as_str()),
             Some("Automations")
         );
         // A second call never creates another container.
-        assert_eq!(store.ensure_automation_project("/other".into()).unwrap(), id);
-        assert_eq!(store.projects.iter().filter(|p| p.kind == ProjectKind::Automation).count(), 1);
+        assert_eq!(
+            store.ensure_automation_project("/other".into()).unwrap(),
+            id
+        );
+        assert_eq!(
+            store
+                .projects
+                .iter()
+                .filter(|p| p.kind == ProjectKind::Automation)
+                .count(),
+            1
+        );
         // The container survives serialization without leaking into user projects.
         let reopened: Store = serde_json::from_slice(&serde_json::to_vec(&store).unwrap()).unwrap();
         assert_eq!(reopened.visible_projects().count(), user_projects);
@@ -3090,7 +3238,9 @@ mod tests {
     #[test]
     fn agent_configuration_migrates_and_prevents_cross_agent_model_inheritance() {
         use crate::research::ResearchKind;
-        let legacy: crate::research::ResearchConfig = serde_json::from_str(r#"{"models":["test/plan","","",""],"ego_path":"ego-browser"}"#).unwrap();
+        let legacy: crate::research::ResearchConfig =
+            serde_json::from_str(r#"{"models":["test/plan","","",""],"ego_path":"ego-browser"}"#)
+                .unwrap();
         assert_eq!(legacy.default_agent, "OpenCode");
         assert!(legacy.agents.iter().all(Option::is_none));
         assert_eq!(
@@ -3129,7 +3279,9 @@ mod tests {
         let template = store.pop_run().unwrap();
         let mut next_run_id = 1_000;
         for index in 0..8 {
-            let id = store.create_task(&format!("Step {index}"), 1, Stage::InProgress, None).unwrap();
+            let id = store
+                .create_task(&format!("Step {index}"), 1, Stage::InProgress, None)
+                .unwrap();
             let mut run = template.clone();
             run.id = next_run_id;
             next_run_id += 1;
@@ -3139,7 +3291,9 @@ mod tests {
             run.id = next_run_id;
             next_run_id += 1;
             run.status = if index == 7 { "Running" } else { "Succeeded" }.into();
-            if index != 7 { run.output = "Saved result".into(); }
+            if index != 7 {
+                run.output = "Saved result".into();
+            }
             store.push_run(run);
         }
         assert_eq!(store.runs.len(), 16);
@@ -3192,17 +3346,24 @@ mod tests {
     fn explicit_topic_creation_never_leaves_an_intermediate_topic() {
         let mut store = Store::empty();
         let topic = store.create_topic(1, "Earnings").unwrap();
-        let goal = store.create_research_goal_in_topic(
-            "Intel earnings".into(), "Review financials".into(), 1, Some(topic),
-        ).unwrap();
+        let goal = store
+            .create_research_goal_in_topic(
+                "Intel earnings".into(),
+                "Review financials".into(),
+                1,
+                Some(topic),
+            )
+            .unwrap();
         assert_eq!(store.topics.len(), 1);
         assert_eq!(store.task_topic(goal).unwrap().id, topic);
         store.set_parent(goal, None).unwrap();
         assert_eq!(store.topics.len(), 1);
         assert_eq!(store.task_topic(goal).unwrap().id, topic);
-        assert!(store.create_research_goal_in_topic(
-            "Invalid".into(), "Scope".into(), 1, Some(999),
-        ).is_err());
+        assert!(
+            store
+                .create_research_goal_in_topic("Invalid".into(), "Scope".into(), 1, Some(999),)
+                .is_err()
+        );
         assert_eq!(store.tasks.len(), 1);
         assert_eq!(store.topics.len(), 1);
     }
@@ -3211,9 +3372,13 @@ mod tests {
     fn placeholder_cleanup_preserves_referenced_topics_and_is_idempotent() {
         let mut store = Store::empty();
         let populated = store.create_topic(1, "待归类").unwrap();
-        store.create_research_goal_in_topic("Legacy".into(), "Scope".into(), 1, Some(populated)).unwrap();
+        store
+            .create_research_goal_in_topic("Legacy".into(), "Scope".into(), 1, Some(populated))
+            .unwrap();
         let requested = store.create_topic(1, "未归类").unwrap();
-        store.create_research_request(1, Some(requested), "Review earnings").unwrap();
+        store
+            .create_research_request(1, Some(requested), "Review earnings")
+            .unwrap();
         let empty = store.create_topic(1, "待归类").unwrap();
         store.set_topic_archived(empty, true).unwrap();
         let named_empty = store.create_topic(1, "My next research").unwrap();
@@ -3239,7 +3404,7 @@ mod tests {
             .create_research_goal("Earnings".into(), "Review earnings".into(), project)
             .unwrap();
         let step = store
-            .create_task("Evidence", project, Stage::Planned, Some(goal))
+            .create_task("Evidence", project, Stage::InProgress, Some(goal))
             .unwrap();
         store.task_mut(step).unwrap().research = Some(crate::research::ResearchTask {
             requires_approval: false,
@@ -3257,7 +3422,7 @@ mod tests {
         assert_eq!(store.research_signature(step), signature);
         assert!(store.set_goal_topic(step, Some(topic)).is_err());
         let ordinary = store
-            .create_task("Ordinary", project, Stage::Planned, None)
+            .create_task("Ordinary", project, Stage::InProgress, None)
             .unwrap();
         assert!(store.set_goal_topic(ordinary, Some(topic)).is_err());
         assert!(store.set_goal_topic(goal, None).is_err());
@@ -3265,7 +3430,7 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_descendants_inherit_topic_and_parent_cycles_terminate() {
+    fn ordinary_descendants_inherit_topic_and_invalid_ancestry_terminates() {
         let mut store = Store::empty();
         let project = store.project_at_mut(0).unwrap().id;
         let topic = store.create_topic(project, "NVIDIA").unwrap();
@@ -3274,10 +3439,10 @@ mod tests {
             .unwrap();
         store.set_goal_topic(goal, Some(topic)).unwrap();
         let child = store
-            .create_task("Follow up", project, Stage::Planned, Some(goal))
+            .create_task("Follow up", project, Stage::InProgress, Some(goal))
             .unwrap();
         let descendant = store
-            .create_task("Read appendix", project, Stage::Planned, Some(child))
+            .create_task("Read appendix", project, Stage::InProgress, Some(child))
             .unwrap();
         assert_eq!(store.task_topic(child).unwrap().id, topic);
         assert_eq!(store.task_topic(descendant).unwrap().id, topic);
@@ -3414,7 +3579,7 @@ mod tests {
         );
         store.reconcile_goal_approvals();
         assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
-        store.task_mut(goal).unwrap().stage = Stage::Planned;
+        store.task_mut(goal).unwrap().stage = Stage::InProgress;
         store.normalize_topics();
         assert!(
             !store.goal_execution_approved(goal),
@@ -3456,10 +3621,10 @@ mod tests {
         let project = store.project_at_mut(0).unwrap().id;
         let key = store.project_at_mut(0).unwrap().key.clone();
         let goal = store
-            .create_task("Goal", project, Stage::Planned, None)
+            .create_task("Goal", project, Stage::InProgress, None)
             .unwrap();
         let step = store
-            .create_task("Evidence", project, Stage::Planned, Some(goal))
+            .create_task("Evidence", project, Stage::InProgress, Some(goal))
             .unwrap();
         store.task_mut(step).unwrap().research = Some(ResearchTask {
             requires_approval: false,
@@ -3516,7 +3681,7 @@ mod tests {
         let mut store = Store::empty();
         let project = store.project_at_mut(0).unwrap().id;
         let id = store
-            .create_task("New task", project, Stage::Planned, None)
+            .create_task("New task", project, Stage::InProgress, None)
             .unwrap();
         let task = store.task(id).unwrap();
         assert!(
@@ -3617,7 +3782,7 @@ mod tests {
         assert!(store.create_task("Task", 99, Stage::Backlog, None).is_err());
         assert_eq!(store.next_id, next);
         let id = store
-            .create_task("  新任务  ", 1, Stage::Planned, None)
+            .create_task("  新任务  ", 1, Stage::InProgress, None)
             .unwrap();
         assert_eq!(store.task(id).unwrap().title, "新任务");
     }
@@ -3634,14 +3799,19 @@ mod tests {
     #[test]
     fn changing_stage_records_one_event_and_never_launches_agent() {
         let mut store = Store::mock();
-        for stage in Stage::ALL { if let Some(policy) = store.policy_mut(stage) { policy.auto_start = true; } }
+        for stage in Stage::ALL {
+            if let Some(policy) = store.policy_mut(stage) {
+                policy.auto_start = true;
+            }
+        }
         let before = store.task(5).unwrap().activity.len();
-        store.set_stage(5, Stage::InProgress).unwrap();
+        store.task_mut(5).unwrap().stage = Stage::Backlog;
+        let stage = store.task(5).unwrap().stage;
+        store.set_stage(5, stage).unwrap();
         store.set_stage(5, Stage::InProgress).unwrap();
         assert_eq!(store.task(5).unwrap().activity.len(), before + 1);
         assert!(store.runs.is_empty());
         assert!(matches_query(store.task(5).unwrap(), "status:in-progress"));
-        assert!(!matches_query(store.task(5).unwrap(), "status:todo"));
     }
     #[test]
     fn query_combines_fields_quotes_aliases_and_exclusion() {
@@ -3649,12 +3819,12 @@ mod tests {
         let task = store.task(5).unwrap();
         assert!(matches_query(
             task,
-            "status:planned priority:high label:bug 中文"
+            "status:in-progress label:bug Preserve Chinese IME"
         ));
-        assert!(!matches_query(task, "status:todo -label:bug"));
+        assert!(!matches_query(task, "status:done -label:bug"));
         assert!(matches_query(
             store.task(1).unwrap(),
-            "status:\"in progress\" priority:high,urgent"
+            "status:\"in progress\""
         ));
         assert!(store.matches_query(task, "TM-5"));
         assert!(!store.matches_query(task, "AG-5"));
@@ -3716,7 +3886,11 @@ mod tests {
             .with_loaded_tracked(Vec::new(), Vec::new(), Vec::new())
             .expect_err("populated stores must not be reset as a load");
         assert!(error.contains("fresh empty store"), "{error}");
-        assert_eq!(populated.runs().len(), 1, "rejected load preserves ownership");
+        assert_eq!(
+            populated.runs().len(),
+            1,
+            "rejected load preserves ownership"
+        );
 
         // Tombstones left by clearing are still tracked intent and must block a load.
         let mut cleared = Store::mock();
@@ -3802,7 +3976,7 @@ mod tests {
 
         let topic = store.create_topic(1, "Tracked topic").unwrap();
         let task = store
-            .create_task_in_topic("Tracked task", 1, Stage::Planned, None, Some(topic))
+            .create_task_in_topic("Tracked task", 1, Stage::InProgress, None, Some(topic))
             .unwrap();
         store.task_mut(task).unwrap().title = "Changed".into();
         store.push_project(Project {
@@ -3850,9 +4024,11 @@ mod tests {
         )));
         assert!(changes.contains(&EntityChange::Delete(EntityKey::Project(2))));
         assert!(matches!(
-            store.pending_entity_changes().unwrap().iter().find(|change| {
-                matches!(change, EntityChange::Delete(EntityKey::Project(_)))
-            }),
+            store
+                .pending_entity_changes()
+                .unwrap()
+                .iter()
+                .find(|change| { matches!(change, EntityChange::Delete(EntityKey::Project(_))) }),
             Some(_)
         ));
     }
@@ -3887,7 +4063,7 @@ mod tests {
         store.clear_all_tracking();
         let topic = store.create_topic(1, "Topic").unwrap();
         let task = store
-            .create_task_in_topic("First title", 1, Stage::Planned, None, Some(topic))
+            .create_task_in_topic("First title", 1, Stage::InProgress, None, Some(topic))
             .unwrap();
         let receipt = store.drain_store_delta().unwrap();
         // Same id, edited after the group was drained but before it is acked.
@@ -4000,7 +4176,13 @@ mod activity_time_tests {
         chrono::DateTime::parse_from_str(time, "%Y-%m-%d %H:%M:%S %:z").unwrap();
         let saved = serde_json::to_string(&event).unwrap();
         let restored: String = serde_json::from_str(&saved).unwrap();
-        assert_eq!(activity_display(&restored, ""), format!("Todo → In progress · {}", crate::time_display::timestamp(time)));
+        assert_eq!(
+            activity_display(&restored, ""),
+            format!(
+                "Todo → In progress · {}",
+                crate::time_display::timestamp(time)
+            )
+        );
     }
 
     #[test]

@@ -22,12 +22,12 @@ pub(crate) fn edit_impact_note(app: &TaskApp, id: u64, cx: &App) -> Option<AnyEl
     let (heading, body) = if crate::research_input::automation_owned_task(&app.store, id) {
         (
             "Automation period input",
-            "Period execution inputs are frozen. Edit the automation definition and replan future periods; labels, due date and cycle remain metadata.",
+            "Period execution inputs are frozen. Edit the automation definition and replan future periods; labels and due date remain metadata.",
         )
     } else if task.research.is_some() {
         (
             "Research input",
-            "Title, description, project, comments and materials change the research input. Moving the stage to Backlog or Cancelled withdraws approval as a lifecycle action. Labels, priority, due date and cycle are presentation metadata.",
+            "Title, description, project, comments and materials change the research input. Moving the stage to Backlog or Cancelled withdraws approval as a lifecycle action. Labels and due date are presentation metadata.",
         )
     } else {
         return None;
@@ -105,7 +105,7 @@ pub(crate) fn save_impact_dialog(app: &TaskApp, cx: &mut Context<TaskApp>) -> An
         details = details
             .child(muted(
                 if impact.review_required {
-                    "Saving withdraws approval for this goal. All execution waits until you move it to Todo again."
+                    "Saving withdraws approval for this goal. All execution waits until you review and run it again."
                 } else {
                     "This goal is already awaiting review. The changed input graph still needs an explanation."
                 },
@@ -279,7 +279,9 @@ pub(crate) fn previous_versions_dialog(app: &TaskApp, cx: &mut Context<TaskApp>)
                 .rounded(px(crate::appearance::CONTROL_RADIUS))
                 .selected(active)
                 .when(active, |button| button.bg(rgb(colors.accent_surface)))
-                .tooltip(crate::i18n::tr(format!("Recorded {recorded} · input revision {digest}")))
+                .tooltip(crate::i18n::tr(format!(
+                    "Recorded {recorded} · input revision {digest}"
+                )))
                 .accessibility_label(crate::i18n::tr(format!(
                     "{} · {} · Run #{run} · {recorded} · {status}",
                     entry.task_title,
@@ -393,13 +395,15 @@ pub(crate) fn previous_versions_dialog(app: &TaskApp, cx: &mut Context<TaskApp>)
                 .disabled(history.is_none())
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
                     let entity = entity.clone();
-                    menu = menu.item(PopupMenuItem::new(crate::i18n::tr("Export Markdown")).on_click(
-                        move |_, _, cx| {
-                            let _ = entity.update(cx, |app, cx| {
-                                app.export_previous_version(run, cx);
-                            });
-                        },
-                    ));
+                    menu = menu.item(
+                        PopupMenuItem::new(crate::i18n::tr("Export Markdown")).on_click(
+                            move |_, _, cx| {
+                                let _ = entity.update(cx, |app, cx| {
+                                    app.export_previous_version(run, cx);
+                                });
+                            },
+                        ),
+                    );
                     menu
                 })
                 .into_any_element()

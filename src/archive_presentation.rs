@@ -230,9 +230,12 @@ pub fn restore_owner(store: &Store, id: u64) -> Option<ArchivedOwner> {
         if task.archived {
             return Some(ArchivedOwner::Task(task.id));
         }
-        current = task
-            .parent_id
-            .or_else(|| task.research.as_ref().filter(|r| r.goal_id != task.id).map(|r| r.goal_id));
+        current = task.parent_id.or_else(|| {
+            task.research
+                .as_ref()
+                .filter(|r| r.goal_id != task.id)
+                .map(|r| r.goal_id)
+        });
     }
     None
 }
@@ -313,8 +316,16 @@ mod tests {
         let archived = presentation(&store, goal).unwrap();
         assert_eq!(archived.label, "Archived · 3/3 complete");
         assert_eq!(archived.phase, Stage::Done);
-        assert!(store.task_status(goal, None).label().contains("Archived · 3/3 complete"));
-        assert!(!store.goal_tasks_complete(goal), "archived work is not executable");
+        assert!(
+            store
+                .task_status(goal, None)
+                .label()
+                .contains("Archived · 3/3 complete")
+        );
+        assert!(
+            !store.goal_tasks_complete(goal),
+            "archived work is not executable"
+        );
         assert_eq!(result_target(&store, goal, true), Some(steps[2]));
         assert_eq!(
             retained_result(&store, steps[2]).map(|run| run.output.as_str()),
@@ -327,7 +338,10 @@ mod tests {
         store.restore(goal).unwrap();
         assert!(presentation(&store, goal).is_none());
         assert!(store.goal_tasks_complete(goal));
-        assert_eq!(store.research_result(steps[2]).map(|run| run.id), Some(report));
+        assert_eq!(
+            store.research_result(steps[2]).map(|run| run.id),
+            Some(report)
+        );
     }
 
     #[test]
@@ -339,10 +353,8 @@ mod tests {
             .find(|run| run.task_id == steps[2])
             .unwrap()
             .id;
-        store
-            .run_mut(report_run)
-            .unwrap()
-            .output = r#"{"status":"complete","report":"unvalidated"#.into();
+        store.run_mut(report_run).unwrap().output =
+            r#"{"status":"complete","report":"unvalidated"#.into();
         store.archive(goal).unwrap();
         let history = goal_history(&store, goal);
         assert_eq!(history.completed_steps, 2);
@@ -368,14 +380,23 @@ mod tests {
         assert_eq!(history.completed_steps, 2);
         assert_eq!(history.retained_steps, 3);
         assert!(!history.complete);
-        assert_eq!(presentation(&store, goal).unwrap().label, "Archived · 2/3 validated");
+        assert_eq!(
+            presentation(&store, goal).unwrap().label,
+            "Archived · 2/3 validated"
+        );
     }
 
     #[test]
     fn failed_regeneration_keeps_prior_validated_report() {
         let (mut store, goal, steps) = completed_goal();
-        let prior = store.runs().iter().find(|run| run.task_id == steps[2]).unwrap().clone();
-        let mut failed = crate::research::prepare_report_regeneration(&store, prior.id, "retry").unwrap();
+        let prior = store
+            .runs()
+            .iter()
+            .find(|run| run.task_id == steps[2])
+            .unwrap()
+            .clone();
+        let mut failed =
+            crate::research::prepare_report_regeneration(&store, prior.id, "retry").unwrap();
         failed.status = "Failed".into();
         failed.output = r#"{"status":"complete","report":"unvalidated retry"#.into();
         store.push_run(failed);
@@ -383,7 +404,10 @@ mod tests {
         let history = goal_history(&store, goal);
         assert_eq!(history.completed_steps, 3);
         assert!(history.complete);
-        assert_eq!(validated_history_result(&store, steps[2]).map(|run| run.id), Some(prior.id));
+        assert_eq!(
+            validated_history_result(&store, steps[2]).map(|run| run.id),
+            Some(prior.id)
+        );
     }
 
     #[test]
@@ -395,17 +419,19 @@ mod tests {
             .find(|run| run.task_id == steps[2])
             .unwrap()
             .id;
-        store
-            .run_mut(report_run)
-            .unwrap()
-            .output = r#"{"status":"complete","report":"unvalidated"#.into();
+        store.run_mut(report_run).unwrap().output =
+            r#"{"status":"complete","report":"unvalidated"#.into();
         store.archive(goal).unwrap();
         let step = presentation(&store, steps[2]).unwrap();
         assert!(!step.complete);
         assert_eq!(step.phase, Stage::Review);
         assert_eq!(step.label, "Archived · retained attempt, not validated");
         let status = store.task_status(steps[2], None);
-        assert!(status.label().contains("Archived · retained attempt, not validated"));
+        assert!(
+            status
+                .label()
+                .contains("Archived · retained attempt, not validated")
+        );
         assert!(!status.label().contains("Done"));
         assert!(retained_result(&store, steps[2]).is_some());
         assert!(validated_history_result(&store, steps[2]).is_none());
@@ -435,7 +461,10 @@ mod tests {
         assert_eq!(restore_owner(&store, goal), Some(ArchivedOwner::Task(goal)));
         store.restore(goal).unwrap();
         store.set_topic_archived(topic, true).unwrap();
-        assert_eq!(restore_owner(&store, goal), Some(ArchivedOwner::Topic(topic)));
+        assert_eq!(
+            restore_owner(&store, goal),
+            Some(ArchivedOwner::Topic(topic))
+        );
         store.set_topic_archived(topic, false).unwrap();
         assert_eq!(restore_owner(&store, goal), None);
     }
@@ -446,7 +475,10 @@ mod tests {
         let topic = store.task_topic(goal).unwrap().id;
         store.set_topic_archived(topic, true).unwrap();
         store.archive(goal).unwrap();
-        assert_eq!(restore_owner(&store, goal), Some(ArchivedOwner::Topic(topic)));
+        assert_eq!(
+            restore_owner(&store, goal),
+            Some(ArchivedOwner::Topic(topic))
+        );
         store.set_topic_archived(topic, false).unwrap();
         assert!(store.task_is_archived(goal));
         assert_eq!(restore_owner(&store, goal), Some(ArchivedOwner::Task(goal)));
@@ -533,8 +565,7 @@ mod tests {
         store.archive(goal).unwrap();
         let path = root.join("workspace.sqlite3");
         let database =
-            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_31, &store)
-                .unwrap();
+            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_31, &store).unwrap();
         let mut lazy = database.load_store_lazy().unwrap();
         let history = goal_history(&lazy, goal);
         assert_eq!(history.completed_steps, 0);
@@ -563,15 +594,22 @@ mod tests {
         assert_eq!(history.completed_steps, 0);
         assert_eq!(history.pending_steps, 3);
         assert!(!history.complete);
-        assert!(presentation(&lazy, steps[2])
-            .unwrap()
-            .label
-            .contains("saved result available"));
-        assert!(presentation(&lazy, steps[0])
-            .unwrap()
-            .label
-            .contains("saved result available"));
-        assert!(!lazy.goal_tasks_complete(goal), "archived work remains non-executable");
+        assert!(
+            presentation(&lazy, steps[2])
+                .unwrap()
+                .label
+                .contains("saved result available")
+        );
+        assert!(
+            presentation(&lazy, steps[0])
+                .unwrap()
+                .label
+                .contains("saved result available")
+        );
+        assert!(
+            !lazy.goal_tasks_complete(goal),
+            "archived work remains non-executable"
+        );
 
         for step in &steps[..2] {
             let run_id = lazy
@@ -586,15 +624,20 @@ mod tests {
         let history = goal_history(&lazy, goal);
         assert_eq!(history.completed_steps, 3);
         assert!(history.complete);
-        assert_eq!(presentation(&lazy, goal).unwrap().label, "Archived · 3/3 complete");
+        assert_eq!(
+            presentation(&lazy, goal).unwrap().label,
+            "Archived · 3/3 complete"
+        );
         assert!(!lazy.goal_tasks_complete(goal));
 
-        lazy.task_mut(steps[0]).unwrap().description.push_str(" changed scope");
+        lazy.task_mut(steps[0])
+            .unwrap()
+            .description
+            .push_str(" changed scope");
         let history = goal_history(&lazy, goal);
         assert_eq!(history.completed_steps, 0);
         assert_eq!(history.pending_steps, 0);
         assert!(!history.complete);
         let _ = std::fs::remove_dir_all(root);
     }
-
 }

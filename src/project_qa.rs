@@ -107,7 +107,7 @@ pub fn run(live: bool) {
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
             let runs = a.store.runs().len();
-            a.change_stage(goal, Stage::Planned, cx);
+            a.change_stage(goal, Stage::InProgress, cx);
             assert!(
                 a.store.goal_execution_approved(goal),
                 "Approval failed: {}",

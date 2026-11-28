@@ -58,13 +58,33 @@ pub(crate) struct DurableAdmission {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum AdmissionUpdate {
     Durable(DurableAdmission),
-    LaunchClaimPersisted { operation_key: String },
-    LaunchClaimFailed { operation_key: String, reason: String },
-    LaunchClaimReleased { operation_key: String },
-    ResolutionPersisted { operation_key: String, rerun: bool, replacement: Option<u64> },
-    ResolutionRestored { operation_key: String, rerun: bool, replacement: Option<u64> },
-    ResolutionReleased { operation_key: String },
-    ResolutionFailed { operation_key: String, reason: String },
+    LaunchClaimPersisted {
+        operation_key: String,
+    },
+    LaunchClaimFailed {
+        operation_key: String,
+        reason: String,
+    },
+    LaunchClaimReleased {
+        operation_key: String,
+    },
+    ResolutionPersisted {
+        operation_key: String,
+        rerun: bool,
+        replacement: Option<u64>,
+    },
+    ResolutionRestored {
+        operation_key: String,
+        rerun: bool,
+        replacement: Option<u64>,
+    },
+    ResolutionReleased {
+        operation_key: String,
+    },
+    ResolutionFailed {
+        operation_key: String,
+        reason: String,
+    },
     ResolutionStatusDurable {
         operation_key: String,
         run: AgentRun,
@@ -74,23 +94,52 @@ pub(crate) enum AdmissionUpdate {
         operation_key: String,
         reason: String,
     },
-    Acknowledged { operation_key: String },
-    AckFailed { operation_key: String, reason: String },
+    Acknowledged {
+        operation_key: String,
+    },
+    AckFailed {
+        operation_key: String,
+        reason: String,
+    },
     /// A durable cancellation marker was restored after restart. The matching
     /// dispatch intent must not be admitted or launched; the run is retired as
     /// Cancelled if it reached the durable store before the crash.
-    CancelRestored { operation_key: String, run_id: u64 },
-    CancelReleased { operation_key: String },
-    CancelFailed { operation_key: String, reason: String },
-    Blocked { id: AdmissionId, reason: String },
-    Retained { id: AdmissionId, reason: String },
-    StaleAck { id: AdmissionId, reason: String },
+    CancelRestored {
+        operation_key: String,
+        run_id: u64,
+    },
+    CancelReleased {
+        operation_key: String,
+    },
+    CancelFailed {
+        operation_key: String,
+        reason: String,
+    },
+    Blocked {
+        id: AdmissionId,
+        reason: String,
+    },
+    Retained {
+        id: AdmissionId,
+        reason: String,
+    },
+    StaleAck {
+        id: AdmissionId,
+        reason: String,
+    },
     /// An ordinary live save group became durable. `epoch` is the dirty epoch
     /// captured when the group was staged.
-    LiveSaveDurable { generation: u64, epoch: u64 },
+    LiveSaveDurable {
+        generation: u64,
+        epoch: u64,
+    },
     /// A live save group was blocked, rejected, returned or failed. The UI
     /// keeps the dirty state and retries later.
-    LiveSaveError { generation: u64, epoch: u64, reason: String },
+    LiveSaveError {
+        generation: u64,
+        epoch: u64,
+        reason: String,
+    },
 }
 
 #[derive(Debug)]
@@ -241,7 +290,9 @@ impl DispatchAdmissionAdapter {
     }
 
     pub(crate) fn last_error(&self) -> Option<&str> {
-        self.last_error.as_deref().or_else(|| self.worker.last_error())
+        self.last_error
+            .as_deref()
+            .or_else(|| self.worker.last_error())
     }
 
     pub(crate) fn pending_len(&self) -> usize {
@@ -343,10 +394,13 @@ impl DispatchAdmissionAdapter {
                                 operation_key: operation_key.to_string(),
                             });
                         } else if let Some(rest) = key.strip_prefix("resolve:") {
-                            if let Some((operation_key, rerun, replacement)) = parse_resolution(rest) {
+                            if let Some((operation_key, rerun, replacement)) =
+                                parse_resolution(rest)
+                            {
                                 self.resolutions
                                     .insert(operation_key.to_string(), (rerun, replacement));
-                                self.resolution_keys.insert(operation_key.to_string(), key.clone());
+                                self.resolution_keys
+                                    .insert(operation_key.to_string(), key.clone());
                                 updates.push(AdmissionUpdate::ResolutionPersisted {
                                     operation_key: operation_key.to_string(),
                                     rerun,
@@ -416,9 +470,7 @@ impl DispatchAdmissionAdapter {
                         } else {
                             self.awaiting_ack.remove(&key);
                             self.known_keys.remove(&key);
-                            updates.push(AdmissionUpdate::Acknowledged {
-                                operation_key: key,
-                            });
+                            updates.push(AdmissionUpdate::Acknowledged { operation_key: key });
                         }
                     }
                     Err(reason) => {
@@ -436,9 +488,7 @@ impl DispatchAdmissionAdapter {
                     }
                 },
                 WorkerEvent::Blocked {
-                    generation,
-                    error,
-                    ..
+                    generation, error, ..
                 } => {
                     if let Some(epoch) = self.live_saves.get(&generation).copied() {
                         self.last_error = Some(format!("live save blocked: {error}"));
@@ -485,8 +535,9 @@ impl DispatchAdmissionAdapter {
                         pending.submitted = false;
                         updates.push(AdmissionUpdate::ResolutionStatusFailed {
                             operation_key: pending.operation_key.clone(),
-                            reason: "worker returned the status group before durability; it is retained"
-                                .into(),
+                            reason:
+                                "worker returned the status group before durability; it is retained"
+                                    .into(),
                         });
                         continue;
                     }
@@ -636,9 +687,7 @@ impl DispatchAdmissionAdapter {
         replacement: Option<u64>,
     ) -> Result<(), String> {
         let decision = if rerun { "rerun" } else { "failed" };
-        let suffix = replacement
-            .map(|id| format!(":{id}"))
-            .unwrap_or_default();
+        let suffix = replacement.map(|id| format!(":{id}")).unwrap_or_default();
         self.worker
             .persist_marker(format!("resolve:{operation_key}:{decision}{suffix}"))
     }
@@ -711,8 +760,7 @@ impl DispatchAdmissionAdapter {
     }
 
     pub(crate) fn release_cancel(&mut self, operation_key: &str) -> Result<(), String> {
-        self.worker
-            .remove_intent(format!("cancel:{operation_key}"))
+        self.worker.remove_intent(format!("cancel:{operation_key}"))
     }
 
     /// Test-only worker hold used to prove pre-ACK cancellation deterministically.
@@ -739,8 +787,7 @@ impl DispatchAdmissionAdapter {
     /// Remove a claim only after the caller explicitly resolved the ambiguity or
     /// confirmed a terminal run state.
     pub(crate) fn release_launch_claim(&mut self, operation_key: &str) -> Result<(), String> {
-        self.worker
-            .remove_intent(format!("launch:{operation_key}"))
+        self.worker.remove_intent(format!("launch:{operation_key}"))
     }
 
     pub(crate) fn launch_claims(&self) -> Vec<String> {
@@ -786,14 +833,9 @@ impl DispatchAdmissionAdapter {
         self.worker.set_fault(fault)
     }
 
-    fn request_intent_persistence(
-        &self,
-        pending: &mut PendingAdmission,
-    ) -> Result<(), String> {
-        self.worker.persist_intent(
-            pending.parts.operation_key.clone(),
-            pending.parts.clone(),
-        )?;
+    fn request_intent_persistence(&self, pending: &mut PendingAdmission) -> Result<(), String> {
+        self.worker
+            .persist_intent(pending.parts.operation_key.clone(), pending.parts.clone())?;
         pending.state = AdmissionState::PersistingIntent;
         Ok(())
     }
@@ -848,7 +890,8 @@ impl DispatchAdmissionAdapter {
                 if let Some((operation_key, rerun, replacement)) = parse_resolution(rest) {
                     self.resolutions
                         .insert(operation_key.to_string(), (rerun, replacement));
-                    self.resolution_keys.insert(operation_key.to_string(), stored_key.clone());
+                    self.resolution_keys
+                        .insert(operation_key.to_string(), stored_key.clone());
                     updates.push(AdmissionUpdate::ResolutionRestored {
                         operation_key: operation_key.to_string(),
                         rerun,
@@ -1106,7 +1149,9 @@ impl DispatchAdmissionAdapter {
     pub(crate) fn live_snapshot(&self) -> Vec<StagedGroup> {
         let mut groups: Vec<StagedGroup> = self.live_copies.values().cloned().collect();
         if let Some((group, _)) = &self.live_retained
-            && !groups.iter().any(|existing| existing.generation() == group.generation())
+            && !groups
+                .iter()
+                .any(|existing| existing.generation() == group.generation())
         {
             groups.push(group.clone());
         }
@@ -1147,7 +1192,9 @@ impl DispatchAdmissionAdapter {
     pub(crate) fn retry_live(&mut self) -> Result<(), String> {
         self.retry_live_group();
         if self.live_retained.is_some() {
-            return Err("The previous live save is still retained by the persistence worker.".into());
+            return Err(
+                "The previous live save is still retained by the persistence worker.".into(),
+            );
         }
         self.worker.retry()
     }
@@ -1219,11 +1266,14 @@ fn parse_resolution(rest: &str) -> Option<(&str, bool, Option<u64>)> {
 fn extract_parts(prepared: &PreparedCommand) -> Result<AdmissionParts, String> {
     let (run, occurrence_id, planning_request, request_snapshot) = match &prepared.command {
         Command::DispatchRun { occurrence, run } => (run, *occurrence, None, None),
-        Command::DispatchRegeneration { occurrence, run, .. } => (run, *occurrence, None, None),
+        Command::DispatchRegeneration {
+            occurrence, run, ..
+        } => (run, *occurrence, None, None),
         Command::DispatchRequestPlan { request_id, run } => {
-            let owner = run.planning_owner.as_ref().ok_or_else(|| {
-                "the planning run has no immutable request owner".to_string()
-            })?;
+            let owner = run
+                .planning_owner
+                .as_ref()
+                .ok_or_else(|| "the planning run has no immutable request owner".to_string())?;
             if owner.request_id != *request_id {
                 return Err("the planning run belongs to another request".into());
             }
@@ -1278,8 +1328,8 @@ fn extract_parts(prepared: &PreparedCommand) -> Result<AdmissionParts, String> {
         }
         None => None,
     };
-    let next_id = (prepared.staged.next_id() != prepared.base.next_id)
-        .then_some(prepared.staged.next_id());
+    let next_id =
+        (prepared.staged.next_id() != prepared.base.next_id).then_some(prepared.staged.next_id());
     let run_id_floor = (prepared.staged.run_id_floor() != prepared.base.run_id_floor)
         .then_some(prepared.staged.run_id_floor());
     Ok(AdmissionParts {
@@ -1314,8 +1364,11 @@ fn stage(journal: &mut ChangeJournal, parts: &AdmissionParts) -> Result<StagedGr
         // commit path inserts only when the request id is absent.
         changes.push(EntityChange::EnsureResearchRequest(request.clone()));
     }
-    let mut metadata: Vec<MetadataDelta> =
-        parts.next_id.map(MetadataDelta::NextId).into_iter().collect();
+    let mut metadata: Vec<MetadataDelta> = parts
+        .next_id
+        .map(MetadataDelta::NextId)
+        .into_iter()
+        .collect();
     if let Some(floor) = parts.run_id_floor {
         metadata.push(MetadataDelta::RunIdFloor(floor));
     }
@@ -1472,7 +1525,8 @@ mod tests {
 
     fn prepared_dispatch_with_run(run_id: u64) -> (Store, PreparedCommand) {
         let mut store = Store::mock();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("fixture/model".into());
         store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
         let goal = store
@@ -1502,11 +1556,9 @@ mod tests {
 
     fn research_store(directory: &std::path::Path) -> Store {
         let mut store = Store::mock();
-        store.project_at_mut(0).unwrap().directory =
-            directory.to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
         store.set_default_model("fixture/model".into());
-        store.research_config_mut().models =
-            std::array::from_fn(|_| "fixture/model".to_string());
+        store.research_config_mut().models = std::array::from_fn(|_| "fixture/model".to_string());
         store
     }
 
@@ -1523,7 +1575,10 @@ mod tests {
         run.status = "Queued".into();
         run.queued_at = "2026-11-09T00:00:00Z".into();
         run.started_at.clear();
-        let command = Command::DispatchRequestPlan { request_id: request, run };
+        let command = Command::DispatchRequestPlan {
+            request_id: request,
+            run,
+        };
         let prepared = store
             .prepare_command(
                 command.id(),
@@ -1565,8 +1620,8 @@ mod tests {
         .to_string();
         source.input_signature = store.research_signature(source_step).unwrap();
         store.push_run(source);
-        let mut run = crate::research::prepare_report_regeneration(&store, 2_000, "shorter")
-            .unwrap();
+        let mut run =
+            crate::research::prepare_report_regeneration(&store, 2_000, "shorter").unwrap();
         run.id = run_id;
         run.status = "Queued".into();
         run.queued_at = "2026-11-09T00:00:00Z".into();
@@ -1609,11 +1664,11 @@ mod tests {
         let durable = wait_durable(&mut adapter);
         assert_eq!(durable.id.run_id, id.run_id);
         assert_eq!(
-            durable
-                .parts
-                .planning_request
-                .as_ref()
-                .map(|link| (link.request_id, link.revision, link.run_id)),
+            durable.parts.planning_request.as_ref().map(|link| (
+                link.request_id,
+                link.revision,
+                link.run_id
+            )),
             Some((request_id, 1, id.run_id))
         );
         // Crash/reopen before any later live snapshot. The request content,
@@ -1729,8 +1784,7 @@ mod tests {
     fn seeded(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
         let root = temp_root(name);
         let path = root.join("workspace.sqlite3");
-        crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, WORKSPACE, &Store::mock())
-            .unwrap();
+        crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, WORKSPACE, &Store::mock()).unwrap();
         (root, path)
     }
 
@@ -1754,7 +1808,10 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        panic!("dispatch did not become durable: {:?}", adapter.last_error());
+        panic!(
+            "dispatch did not become durable: {:?}",
+            adapter.last_error()
+        );
     }
 
     fn wait_ack(adapter: &mut DispatchAdmissionAdapter, key: &str) {
@@ -1768,7 +1825,10 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        panic!("acknowledgement was not confirmed: {:?}", adapter.last_error());
+        panic!(
+            "acknowledgement was not confirmed: {:?}",
+            adapter.last_error()
+        );
     }
 
     #[test]
@@ -1807,7 +1867,11 @@ mod tests {
             .load_store()
             .unwrap();
         assert_eq!(
-            reopened.runs().iter().filter(|run| run.id == id.run_id).count(),
+            reopened
+                .runs()
+                .iter()
+                .filter(|run| run.id == id.run_id)
+                .count(),
             1
         );
     }
@@ -1878,7 +1942,11 @@ mod tests {
             .load_store()
             .unwrap();
         assert_eq!(
-            reopened.runs().iter().filter(|run| run.id == id.run_id).count(),
+            reopened
+                .runs()
+                .iter()
+                .filter(|run| run.id == id.run_id)
+                .count(),
             1
         );
         adapter.request_shutdown();
@@ -1930,7 +1998,11 @@ mod tests {
             .load_store()
             .unwrap();
         assert_eq!(
-            store.runs().iter().filter(|run| run.id == id.run_id).count(),
+            store
+                .runs()
+                .iter()
+                .filter(|run| run.id == id.run_id)
+                .count(),
             1,
             "crash recovery must not duplicate the run"
         );
@@ -2032,7 +2104,11 @@ mod tests {
             "{:?}",
             adapter.last_error()
         );
-        assert_eq!(std::fs::read(&intent).unwrap(), before, "file must be preserved");
+        assert_eq!(
+            std::fs::read(&intent).unwrap(),
+            before,
+            "file must be preserved"
+        );
         adapter.request_shutdown();
     }
 
@@ -2137,7 +2213,11 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        assert_eq!(status_gen, Some(retained), "exact retained generation must commit");
+        assert_eq!(
+            status_gen,
+            Some(retained),
+            "exact retained generation must commit"
+        );
         // A subsequent ordinary admission must commit at the next generation.
         adapter
             .admit(adapter_prepared_for_test(&root, 1_001))
@@ -2156,7 +2236,11 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
-        assert_eq!(last_gen, Some(retained + 1), "ordinary admission must follow contiguously");
+        assert_eq!(
+            last_gen,
+            Some(retained + 1),
+            "ordinary admission must follow contiguously"
+        );
         adapter.request_shutdown();
     }
 
@@ -2192,7 +2276,11 @@ mod tests {
         let parts = extract_parts(&prepared).unwrap();
         assert!(apply_durable_parts(&mut store, &parts).unwrap());
         assert_eq!(
-            store.runs().iter().filter(|run| run.id == parts.run.id).count(),
+            store
+                .runs()
+                .iter()
+                .filter(|run| run.id == parts.run.id)
+                .count(),
             1
         );
         // Identical replay is not a new insertion and must not request a launch.
@@ -2249,11 +2337,15 @@ mod tests {
             LiveReceiptMatch::Durable(55)
         );
         assert_eq!(
-            classify_live_receipt(&live, 1, &DurableReceipt {
-                workspace: 1,
-                generation: 10,
-                effects: Vec::new(),
-            }),
+            classify_live_receipt(
+                &live,
+                1,
+                &DurableReceipt {
+                    workspace: 1,
+                    generation: 10,
+                    effects: Vec::new(),
+                }
+            ),
             LiveReceiptMatch::None
         );
     }

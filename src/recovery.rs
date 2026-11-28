@@ -147,7 +147,10 @@ fn inspect(executable: &Path, run: &AgentRun) -> SessionCheck {
         if active.contains_key(session) {
             return Ok(SessionCheck::Running);
         }
-        let request = opencode::Request { agent: None, browser_executable: None, gateway_url: None,
+        let request = opencode::Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
             executable: executable.into(),
             directory: directory.canonicalize().map_err(|e| e.to_string())?,
             model: String::new(),
@@ -174,14 +177,27 @@ fn inspect(executable: &Path, run: &AgentRun) -> SessionCheck {
 // Recovery deliberately avoids reading Codex's private rollout schema. Once stopped,
 // the saved thread ID can be resumed explicitly by the normal dispatcher.
 pub(crate) fn inspect_codex(run: &AgentRun) -> SessionCheck {
-    if run.started_at.is_empty() { return SessionCheck::Stopped; }
+    if run.started_at.is_empty() {
+        return SessionCheck::Stopped;
+    }
     let directory = match Path::new(&run.directory).canonicalize() {
         Ok(path) => path,
-        Err(error) => return SessionCheck::Unknown(format!("Cannot inspect Codex working directory: {error}")),
+        Err(error) => {
+            return SessionCheck::Unknown(format!(
+                "Cannot inspect Codex working directory: {error}"
+            ));
+        }
     };
-    let request = opencode::Request { agent: None, browser_executable: None, gateway_url: None,
-        executable: Default::default(), directory, model: run.model.clone(),
-        prompt: run.prompt.clone(), title: run.task_title.clone(), files: vec![],
+    let request = opencode::Request {
+        agent: None,
+        browser_executable: None,
+        gateway_url: None,
+        executable: Default::default(),
+        directory,
+        model: run.model.clone(),
+        prompt: run.prompt.clone(),
+        title: run.task_title.clone(),
+        files: vec![],
         session_id: run.session_id.clone(),
     };
     match crate::codex::lock_attempt(&request) {
@@ -195,10 +211,10 @@ impl Store {
     // Superseded attempts are history, not live resource owners.
     pub(crate) fn is_recovery_candidate(&self, run: &AgentRun) -> bool {
         matches!(run.status.as_str(), "Interrupted" | "Recovering")
-            && !self.runs().iter().any(|newer| {
-                newer.id > run.id
-                    && crate::scheduler::same_task(newer, run)
-            })
+            && !self
+                .runs()
+                .iter()
+                .any(|newer| newer.id > run.id && crate::scheduler::same_task(newer, run))
     }
     pub(crate) fn paused_project_goals(&self) -> Vec<(u64, Vec<u64>)> {
         let mut projects: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
@@ -225,9 +241,7 @@ impl Store {
                         .find(|r| r.task_id == t.id && r.project_plan.is_none())
                         .is_some_and(|r| matches!(r.status.as_str(), "Interrupted" | "Recovering"))
                 });
-            if (task.stage == Stage::InProgress || interrupted)
-                && !self.goal_tasks_complete(task.id)
-            {
+            if interrupted && !self.goal_tasks_complete(task.id) {
                 projects.entry(task.project_id).or_default().push(task.id);
             }
         }
@@ -262,9 +276,7 @@ fn orphaned_running_ids(store: &Store, active: &[u64], queued: &[u64]) -> Vec<u6
         .runs()
         .iter()
         .filter(|run| {
-            run.status == "Running"
-                && !active.contains(&run.id)
-                && !queued.contains(&run.id)
+            run.status == "Running" && !active.contains(&run.id) && !queued.contains(&run.id)
         })
         .map(|run| run.id)
         .collect()
@@ -309,7 +321,10 @@ impl TaskApp {
             cx.notify();
             return;
         };
-        if !matches!(self.recovery.checks.get(&previous.id), Some(SessionCheck::Stopped)) {
+        if !matches!(
+            self.recovery.checks.get(&previous.id),
+            Some(SessionCheck::Stopped)
+        ) {
             self.error = "Check the previous session before resuming the understanding.".into();
             self.check_interrupted_sessions(cx);
             cx.notify();
@@ -345,7 +360,10 @@ impl TaskApp {
             self.recovery.next_check = None;
             return;
         }
-        let executables: Vec<_> = runs.iter().map(|run| self.store.agent_path(&run.agent).to_owned()).collect();
+        let executables: Vec<_> = runs
+            .iter()
+            .map(|run| self.store.agent_path(&run.agent).to_owned())
+            .collect();
         let (tx, rx) = mpsc::channel();
         for run in &runs {
             self.recovery.checks.insert(run.id, SessionCheck::Checking);
@@ -543,9 +561,10 @@ impl TaskApp {
         let now = Self::automation_now();
         match check {
             SessionCheck::Complete(_) => {
-                if let Err(error) =
-                    crate::automation_runtime::confirm_complete_recovery(&mut self.store, occurrence)
-                {
+                if let Err(error) = crate::automation_runtime::confirm_complete_recovery(
+                    &mut self.store,
+                    occurrence,
+                ) {
                     self.error = format!("Automation recovery could not advance: {error}");
                     self.store.mark_automation_attention(
                         self.store
@@ -630,12 +649,11 @@ impl TaskApp {
     }
 
     fn recoverable_goal(&self, goal: u64) -> bool {
-        self.store
-            .task(goal)
-            .is_some_and(|t| !self.store.task_is_archived(t.id)
+        self.store.task(goal).is_some_and(|t| {
+            !self.store.task_is_archived(t.id)
                 && t.automation_id.is_none()
-                && matches!(t.stage, Stage::Planned | Stage::InProgress))
-            && self.store.goal_execution_approved(goal)
+                && matches!(t.stage, Stage::InProgress | Stage::InProgress)
+        }) && self.store.goal_execution_approved(goal)
             && !self.store.goal_tasks_complete(goal)
             && !self.goal_busy(goal)
             && !self.store.tasks().iter().any(|t| {
@@ -742,12 +760,11 @@ impl TaskApp {
             }
             self.recovery.checks.remove(&id);
         }
-        let command = crate::domain_command::Command::Edit(
-            crate::domain_command::EditCommand::TaskStage {
+        let command =
+            crate::domain_command::Command::Edit(crate::domain_command::EditCommand::TaskStage {
                 id: goal,
                 stage: Stage::Cancelled,
-            },
-        );
+            });
         match self.execute_command(command, cx) {
             Ok(_) => {
                 self.error.clear();
@@ -938,7 +955,8 @@ impl TaskApp {
                         let task = self.store.task(child).unwrap();
                         let state = self.store.execution_status(child, self.todo_batch.as_ref());
                         let title = format!("{} · {}", self.store.identifier(task), task.title);
-                        let row_label = format!("{title} · {}", crate::i18n::tr_string(state.label()));
+                        let row_label =
+                            format!("{title} · {}", crate::i18n::tr_string(state.label()));
                         let hint = self
                             .store
                             .step_block_reason(child)
@@ -950,9 +968,7 @@ impl TaskApp {
                                 .min_h(px(28.))
                                 .id(format!("recovery-step-row-{child}"))
                                 .aria_label(crate::i18n::tr(row_label))
-                                .child(
-                                    state.icon_view(format!("recovery-step-icon-{child}"), cx),
-                                )
+                                .child(state.icon_view(format!("recovery-step-icon-{child}"), cx))
                                 .child(
                                     recovery_title(("recovery-step", child), title, cx)
                                         .text_sm()
@@ -969,7 +985,9 @@ impl TaskApp {
             }
             let requests: Vec<_> = planning
                 .iter()
-                .filter(|r| r.project_plan == Some(project) && !self.store.run_is_automation_owned(r))
+                .filter(|r| {
+                    r.project_plan == Some(project) && !self.store.run_is_automation_owned(r)
+                })
                 .collect();
             if !requests.is_empty() {
                 view = view.child(
@@ -1002,9 +1020,7 @@ impl TaskApp {
                             .any(|candidate| candidate.id == *topic && !candidate.archived)
                     })
                     .map(|topic| ("Open topic", Scope::Topic(topic)))
-                    .or_else(|| {
-                        request.map(|_| ("Open project", Scope::Project(project)))
-                    });
+                    .or_else(|| request.map(|_| ("Open project", Scope::Project(project))));
                 let title = request
                     .map(|r| format!("Request {} · {}", r.id, r.input))
                     .unwrap_or_else(|| run.task_title.clone());
@@ -1085,8 +1101,14 @@ impl TaskApp {
                 );
             }
         }
-        col().id("recovery-scroll").size_full().min_h_0().overflow_y_scroll()
-            .child(view).map(observed).into_any_element()
+        col()
+            .id("recovery-scroll")
+            .size_full()
+            .min_h_0()
+            .overflow_y_scroll()
+            .child(view)
+            .map(observed)
+            .into_any_element()
     }
 }
 
@@ -1100,10 +1122,15 @@ mod tests {
     #[test]
     fn recovery_checks_independent_requests_in_the_same_project() {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("fixture/model".into());
-        let first = store.create_research_request(1, None, "Compare storage engines").unwrap();
-        let second = store.create_research_request(1, None, "Compare network protocols").unwrap();
+        let first = store
+            .create_research_request(1, None, "Compare storage engines")
+            .unwrap();
+        let second = store
+            .create_research_request(1, None, "Compare network protocols")
+            .unwrap();
         let mut first_run = store.prepare_request_plan(first).unwrap();
         first_run.status = "Interrupted".into();
         store.push_run(first_run.clone());
@@ -1200,17 +1227,27 @@ mod tests {
     #[test]
     fn codex_recovery_uses_attempt_lease_even_before_session_event() {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("test/model".into());
-        let goal = store.create_research_goal("Recovery".into(), "Scope".into(), 1).unwrap();
+        let goal = store
+            .create_research_goal("Recovery".into(), "Scope".into(), 1)
+            .unwrap();
         let mut run = store.prepare_run(goal).unwrap();
         run.agent = "Codex".into();
         run.prompt = crate::opencode::new_session_id();
         run.session_id = None;
-        let request = crate::opencode::Request { agent: None, browser_executable: None, gateway_url: None,
-            executable: Default::default(), directory: run.directory.clone().into(),
-            model: run.model.clone(), prompt: run.prompt.clone(), title: run.task_title.clone(),
-            files: vec![], session_id: None,
+        let request = crate::opencode::Request {
+            agent: None,
+            browser_executable: None,
+            gateway_url: None,
+            executable: Default::default(),
+            directory: run.directory.clone().into(),
+            model: run.model.clone(),
+            prompt: run.prompt.clone(),
+            title: run.task_title.clone(),
+            files: vec![],
+            session_id: None,
         };
         let lease = crate::codex::lock_attempt(&request).unwrap();
         let nonexistent = std::path::Path::new("/nonexistent/opencode-must-not-run");
@@ -1282,14 +1319,23 @@ mod tests {
     #[test]
     fn recovery_excludes_unstarted_todo_archived_and_cancelled_goals() {
         let mut s = Store::empty();
+        s.set_default_model("fixture/model".into());
+        s.research_config_mut().models = std::array::from_fn(|_| "fixture/model".into());
+        s.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         let a = s
             .create_research_goal("Started".into(), "Research".into(), 1)
             .unwrap();
         let b = s
-            .create_research_goal("Todo only".into(), "Research".into(), 1)
+            .create_research_goal("Backlog only".into(), "Research".into(), 1)
             .unwrap();
         s.task_mut(a).unwrap().stage = Stage::InProgress;
-        s.task_mut(b).unwrap().stage = Stage::Planned;
+        s.extend_runs([{
+            let mut run = crate::research::prepare_run(&s, a).unwrap();
+            run.status = "Interrupted".into();
+            run
+        }]);
+        s.task_mut(b).unwrap().stage = Stage::Backlog;
         assert_eq!(s.paused_project_goals(), vec![(1, vec![a])]);
         let topic = s.task_topic(a).unwrap().id;
         s.set_topic_archived(topic, true).unwrap();
@@ -1311,9 +1357,12 @@ mod tests {
     #[test]
     fn running_rows_without_a_child_process_are_orphaned() {
         let mut s = Store::empty();
-        s.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        s.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         s.set_default_model("fixture/model".into());
-        let goal = s.create_research_goal("Started".into(), "Research".into(), 1).unwrap();
+        let goal = s
+            .create_research_goal("Started".into(), "Research".into(), 1)
+            .unwrap();
         let mut first_run = s.prepare_run(goal).unwrap();
         let first = first_run.id;
         first_run.status = "Running".into();
@@ -1327,6 +1376,9 @@ mod tests {
         }
 
         assert_eq!(orphaned_running_ids(&s, &[first], &[]), vec![second]);
-        assert_eq!(orphaned_running_ids(&s, &[first], &[second]), Vec::<u64>::new());
+        assert_eq!(
+            orphaned_running_ids(&s, &[first], &[second]),
+            Vec::<u64>::new()
+        );
     }
 }

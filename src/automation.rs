@@ -339,7 +339,10 @@ impl AutomationTemplate {
         for goal in &self.goals {
             let goal_title = goal.title.chars().take(80).collect::<String>();
             if let Some(rejection) = crate::automation_policy::rejection(&goal.title) {
-                return Err(format!("Goal title \"{goal_title}\": {}", rejection.message()));
+                return Err(format!(
+                    "Goal title \"{goal_title}\": {}",
+                    rejection.message()
+                ));
             }
             if let Some(rejection) = crate::automation_policy::rejection(&goal.brief) {
                 return Err(format!("Goal \"{goal_title}\": {}", rejection.message()));
@@ -347,7 +350,10 @@ impl AutomationTemplate {
             for step in &goal.steps {
                 let step_title = step.title.chars().take(80).collect::<String>();
                 if let Some(rejection) = crate::automation_policy::rejection(&step.title) {
-                    return Err(format!("Step title \"{step_title}\": {}", rejection.message()));
+                    return Err(format!(
+                        "Step title \"{step_title}\": {}",
+                        rejection.message()
+                    ));
                 }
                 if step.instructions.trim().is_empty()
                     || step.instructions.len() > crate::automation_policy::MAX_INSTRUCTION_BYTES
@@ -356,13 +362,12 @@ impl AutomationTemplate {
                         "Step \"{step_title}\": instructions must be 1–12,000 bytes."
                     ));
                 }
-                crate::automation_policy::validate_instruction_text(&step.instructions)
-                    .map_err(|error| {
-                        let message = error
-                            .strip_prefix("Step instructions: ")
-                            .unwrap_or(&error);
+                crate::automation_policy::validate_instruction_text(&step.instructions).map_err(
+                    |error| {
+                        let message = error.strip_prefix("Step instructions: ").unwrap_or(&error);
                         format!("Step \"{step_title}\": {message}")
-                    })?;
+                    },
+                )?;
             }
         }
         Ok(())
@@ -400,7 +405,6 @@ impl AutomationGoal {
             .map_err(|e| e.to_string())
     }
 }
-
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AutomationPlanBinding {
@@ -453,7 +457,12 @@ impl AutomationOccurrenceSnapshot {
         if let Some(shape) = self.shape {
             return shape;
         }
-        let steps: usize = self.template.goals.iter().map(|goal| goal.steps.len()).sum();
+        let steps: usize = self
+            .template
+            .goals
+            .iter()
+            .map(|goal| goal.steps.len())
+            .sum();
         if steps <= 1 {
             AutomationShape::Quick
         } else {
@@ -495,8 +504,12 @@ pub struct AutomationDefinition {
 }
 impl AutomationDefinition {
     pub fn approval_current(&self) -> bool {
-        let Some(approval) = &self.approval else { return false };
-        let Some(template) = &self.template else { return false };
+        let Some(approval) = &self.approval else {
+            return false;
+        };
+        let Some(template) = &self.template else {
+            return false;
+        };
         approval.version == self.version
             && approval.template_signature == template.signature()
             && approval.schedule_signature == self.schedule.signature()
@@ -564,7 +577,6 @@ impl TimeWindow {
         matches!(self.state, TimeWindowState::Resolved { .. })
     }
 }
-
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AutomationOccurrence {
@@ -663,7 +675,10 @@ impl AutomationOccurrence {
 pub fn can_transition(from: OccurrenceStatus, to: OccurrenceStatus) -> bool {
     use OccurrenceStatus::*;
     match from {
-        Queued => matches!(to, Running | Cancelled | Skipped | Interrupted | Failed | Verifying),
+        Queued => matches!(
+            to,
+            Running | Cancelled | Skipped | Interrupted | Failed | Verifying
+        ),
         Running => matches!(
             to,
             Queued | WaitingRetry | Verifying | Succeeded | Failed | Interrupted | Cancelled
@@ -700,7 +715,10 @@ pub fn manual_trigger_key(automation_id: u64, request_id: &str) -> Result<String
 }
 
 pub fn hash_json(value: &serde_json::Value) -> String {
-    format!("{:x}", Sha256::digest(serde_json::to_vec(value).unwrap_or_default()))
+    format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(value).unwrap_or_default())
+    )
 }
 
 /// Read helpers kept on the store so views never scan unrelated entities by hand.
@@ -715,9 +733,7 @@ impl crate::domain::Store {
             .collect()
     }
     pub fn automation_occurrence_by_key(&self, key: &str) -> Option<&AutomationOccurrence> {
-        self.all_occurrences()
-            .iter()
-            .find(|o| o.trigger_key == key)
+        self.all_occurrences().iter().find(|o| o.trigger_key == key)
     }
     pub fn automation_active(&self, automation: u64) -> Option<&AutomationOccurrence> {
         self.all_occurrences()
@@ -744,7 +760,9 @@ impl crate::domain::Store {
         let mut automation_ids = std::collections::HashSet::new();
         for definition in self.automations() {
             if definition.id == 0 || !automation_ids.insert(definition.id) {
-                return Err("Automation definitions contain a duplicate or zero identifier.".into());
+                return Err(
+                    "Automation definitions contain a duplicate or zero identifier.".into(),
+                );
             }
         }
         let mut occurrence_ids = std::collections::HashSet::new();
@@ -795,12 +813,15 @@ impl crate::domain::Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::automation_schedule::{ScheduleSpec, CatchUp};
+    use crate::automation_schedule::{CatchUp, ScheduleSpec};
     use crate::domain::Store;
 
     fn schedule() -> Schedule {
         Schedule {
-            spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+            spec: ScheduleSpec::Daily {
+                hour: 8,
+                minute: 30,
+            },
             timezone: "Asia/Shanghai".into(),
         }
     }
@@ -930,8 +951,12 @@ mod tests {
         let expected = vec![
             EntityChange::Upsert(EntityPayload::Run(store.runs()[0].clone())),
             EntityChange::Delete(EntityKey::Automation(3)),
-            EntityChange::Upsert(EntityPayload::Automation(store.automation(1).unwrap().clone())),
-            EntityChange::Upsert(EntityPayload::Automation(store.automation(2).unwrap().clone())),
+            EntityChange::Upsert(EntityPayload::Automation(
+                store.automation(1).unwrap().clone(),
+            )),
+            EntityChange::Upsert(EntityPayload::Automation(
+                store.automation(2).unwrap().clone(),
+            )),
             EntityChange::Upsert(EntityPayload::Occurrence(
                 store.occurrence(1).unwrap().clone(),
             )),
@@ -1025,13 +1050,19 @@ mod tests {
         let goal = &mut value.template.as_mut().unwrap().goals[0];
         goal.title = "Send email the answer".into();
         let error = value.validate_draft().expect_err("goal title action");
-        assert!(error.starts_with("Goal title \"Send email the answer\""), "{error}");
+        assert!(
+            error.starts_with("Goal title \"Send email the answer\""),
+            "{error}"
+        );
 
         let goal = &mut value.template.as_mut().unwrap().goals[0];
         goal.title = "Publishing industry and order backlog".into();
         goal.steps[0].title = "Delete the files".into();
         let error = value.validate_draft().expect_err("step title action");
-        assert!(error.starts_with("Step title \"Delete the files\""), "{error}");
+        assert!(
+            error.starts_with("Step title \"Delete the files\""),
+            "{error}"
+        );
     }
 
     #[test]
@@ -1086,7 +1117,9 @@ mod tests {
         value.schedule.timezone = "UTC".into();
         assert!(!value.approval_current());
         value = definition();
-        value.template.as_mut().unwrap().goals[0].steps[0].instructions.push_str(" changed");
+        value.template.as_mut().unwrap().goals[0].steps[0]
+            .instructions
+            .push_str(" changed");
         assert!(!value.approval_current());
     }
 
@@ -1112,7 +1145,7 @@ mod tests {
                 models: Default::default(),
                 agents: Default::default(),
                 materials: vec![],
-                    policy: AutomationPolicy::default(),
+                policy: AutomationPolicy::default(),
                 approval_version: 1,
                 approval_signature: "sig".into(),
             },
@@ -1133,7 +1166,10 @@ mod tests {
         };
         occurrence.mark_running(110).unwrap();
         assert_eq!(occurrence.status, OccurrenceStatus::Running);
-        assert_eq!(occurrence.deadline_at, Some(110 + DEFAULT_EXECUTION_TIMEOUT_SECONDS));
+        assert_eq!(
+            occurrence.deadline_at,
+            Some(110 + DEFAULT_EXECUTION_TIMEOUT_SECONDS)
+        );
         occurrence
             .transition(
                 OccurrenceStatus::Cancelled,
@@ -1141,9 +1177,11 @@ mod tests {
             )
             .unwrap();
         assert_eq!(occurrence.reason.as_ref().unwrap().code, SkipCode::Expired);
-        assert!(occurrence
-            .transition(OccurrenceStatus::Running, None)
-            .is_err());
+        assert!(
+            occurrence
+                .transition(OccurrenceStatus::Running, None)
+                .is_err()
+        );
         assert!(!can_transition(
             OccurrenceStatus::Succeeded,
             OccurrenceStatus::Running
@@ -1157,7 +1195,10 @@ mod tests {
     #[test]
     fn trigger_keys_differ_and_survive_version_changes() {
         assert_eq!(scheduled_trigger_key(7, 42), "scheduled:7:42");
-        assert_ne!(scheduled_trigger_key(7, 42), manual_trigger_key(7, "abc").unwrap());
+        assert_ne!(
+            scheduled_trigger_key(7, 42),
+            manual_trigger_key(7, "abc").unwrap()
+        );
         assert!(manual_trigger_key(7, "").is_err());
         assert!(manual_trigger_key(7, "bad key").is_err());
         assert_eq!(manual_trigger_key(7, "req-1").unwrap(), "manual:7:req-1");
@@ -1221,10 +1262,7 @@ mod tests {
     #[test]
     fn legacy_policy_without_publish_flag_stays_opted_out() {
         let mut value = serde_json::to_value(AutomationPolicy::default()).unwrap();
-        value
-            .as_object_mut()
-            .unwrap()
-            .remove("sync_final_report");
+        value.as_object_mut().unwrap().remove("sync_final_report");
         let legacy: AutomationPolicy = serde_json::from_value(value).unwrap();
         assert!(!legacy.sync_final_report);
     }

@@ -17,9 +17,7 @@ fn goal(store: &mut Store, topic: u64, title: &str) -> u64 {
     let request = store
         .create_research_request(1, Some(topic), title)
         .unwrap();
-    store.request_mut(request).unwrap()
-        .goal_ids
-        .push(id);
+    store.request_mut(request).unwrap().goal_ids.push(id);
     id
 }
 
@@ -114,13 +112,32 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         }
                     }
                     state.poll_runtime(cx);
-                    if matches!(state.todo_batch.as_ref().unwrap().state, BatchState::Paused(_)) {
+                    if matches!(
+                        state.todo_batch.as_ref().unwrap().state,
+                        BatchState::Paused(_)
+                    ) {
                         assert!(!admission_pause_seen);
                         admission_pause_seen = true;
-                        assert!(state.store.runs().iter().all(|r| ![b1, c1].contains(&state.store.owning_research_goal(r.task_id).unwrap())));
+                        assert!(state.store.runs().iter().all(|r| {
+                            ![b1, c1]
+                                .contains(&state.store.owning_research_goal(r.task_id).unwrap())
+                        }));
                         assert!(state.todo_batch.as_ref().unwrap().failed_items.is_empty());
-                        assert!(state.task_start_feedback.as_ref().is_some_and(|(_, error)| error.contains("model")));
-                        assert!(state.store.task(a1).unwrap().activity.iter().any(|event| event.contains("queue paused")));
+                        assert!(
+                            state
+                                .task_start_feedback
+                                .as_ref()
+                                .is_some_and(|(_, error)| error.contains("model"))
+                        );
+                        assert!(
+                            state
+                                .store
+                                .task(a1)
+                                .unwrap()
+                                .activity
+                                .iter()
+                                .any(|event| event.contains("queue paused"))
+                        );
                         state.store.research_config_mut().models[2].clear();
                         state.resume_todo_batch(cx);
                     }
@@ -129,7 +146,12 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         .active_runs
                         .iter()
                         .map(|active| {
-                            let run = state.store.runs().iter().find(|r| r.id == active.id).unwrap();
+                            let run = state
+                                .store
+                                .runs()
+                                .iter()
+                                .find(|r| r.id == active.id)
+                                .unwrap();
                             state.store.execution_topic(run.task_id)
                         })
                         .collect::<Vec<_>>();
@@ -175,7 +197,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     }
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |state, cx| {
-            assert!(admission_pause_seen, "Analysis submission failure must pause the current topic");
+            assert!(
+                admission_pause_seen,
+                "Analysis submission failure must pause the current topic"
+            );
             assert!(state.store.goal_tasks_complete(c1));
             assert_eq!(state.todo_batch.as_ref().unwrap().completed, 3);
             assert_eq!(state.todo_batch.as_ref().unwrap().failed_items, vec![b1]);

@@ -8,8 +8,8 @@
 use crate::appearance::Appearance;
 use crate::domain::{AgentRun, Project, ResearchRequest, Store, Task, Topic};
 use crate::model_profiles::ModelProfile;
-use crate::report_publish::PublishingConfig;
 use crate::notification::NotificationConfig;
+use crate::report_publish::PublishingConfig;
 use crate::research::ResearchConfig;
 use crate::scoped_edit::ScopedEditError;
 
@@ -202,7 +202,10 @@ impl SettingsDelta {
         check!(model_profiles, &store.model_profiles().to_vec());
         check!(active_model_profile, store.active_model_profile());
         check!(max_concurrent_runs, &store.max_concurrent_runs());
-        check!(max_concurrent_automations, &store.max_concurrent_automations());
+        check!(
+            max_concurrent_automations,
+            &store.max_concurrent_automations()
+        );
         check!(appearance, &store.appearance());
         check!(report_publishing, store.report_publishing());
         check!(notification_config, store.notification_config());
@@ -278,8 +281,7 @@ impl SettingsBefore {
     fn delta(self, store: &Store) -> SettingsDelta {
         macro_rules! field {
             ($field:ident, $current:expr) => {
-                ($current != &self.$field)
-                    .then(|| (self.$field.clone(), (*$current).clone()))
+                ($current != &self.$field).then(|| (self.$field.clone(), (*$current).clone()))
             };
         }
         SettingsDelta {
@@ -395,7 +397,10 @@ impl DomainCommand {
         let mut created_project = None;
         match self {
             Self::ProjectRename { project, name } => {
-                let before = store.project(project).cloned().ok_or("Project not found.")?;
+                let before = store
+                    .project(project)
+                    .cloned()
+                    .ok_or("Project not found.")?;
                 let run_ids: Vec<u64> = store
                     .runs()
                     .iter()
@@ -404,7 +409,10 @@ impl DomainCommand {
                     .collect();
                 let runs_before = capture_runs(store, &run_ids);
                 store.rename_project(project, &name)?;
-                let after = store.project(project).cloned().ok_or("Project not found.")?;
+                let after = store
+                    .project(project)
+                    .cloned()
+                    .ok_or("Project not found.")?;
                 if before.name != after.name {
                     undo.projects.push(ProjectDelta::Name {
                         id: project,
@@ -415,12 +423,18 @@ impl DomainCommand {
                 undo.runs = changed_runs(store, runs_before);
             }
             Self::ProjectDirectory { project, directory } => {
-                let before = store.project(project).cloned().ok_or("Project not found.")?;
+                let before = store
+                    .project(project)
+                    .cloned()
+                    .ok_or("Project not found.")?;
                 store
                     .project_mut(project)
                     .ok_or("Project not found.")?
                     .directory = directory;
-                let after = store.project(project).cloned().ok_or("Project not found.")?;
+                let after = store
+                    .project(project)
+                    .cloned()
+                    .ok_or("Project not found.")?;
                 if before.directory != after.directory {
                     undo.projects.push(ProjectDelta::Directory {
                         id: project,
@@ -505,7 +519,12 @@ impl DomainCommand {
             }
             Self::TaskParent { task, parent } => {
                 let before = store.task(task).cloned().ok_or("Task not found.")?;
-                let max_topic = store.topics().iter().map(|topic| topic.id).max().unwrap_or(0);
+                let max_topic = store
+                    .topics()
+                    .iter()
+                    .map(|topic| topic.id)
+                    .max()
+                    .unwrap_or(0);
                 store.set_parent(task, parent)?;
                 let after = store.task(task).cloned().ok_or("Task not found.")?;
                 if before.parent_id != after.parent_id {
@@ -697,15 +716,15 @@ fn changed_runs(store: &Store, before: Vec<RunPreimage>) -> Vec<RunDelta> {
         .into_iter()
         .filter_map(|before| {
             let (after_signature, after_plan) = after_by_id.remove(&before.id)?;
-            (after_signature != before.input_signature
-                || after_plan != before.project_plan)
-                .then(|| RunDelta {
+            (after_signature != before.input_signature || after_plan != before.project_plan).then(
+                || RunDelta {
                     id: before.id,
                     before_input_signature: before.input_signature,
                     after_input_signature: after_signature,
                     before_project_plan: before.project_plan,
                     after_project_plan: after_plan,
-                })
+                },
+            )
         })
         .collect()
 }
@@ -782,11 +801,7 @@ fn move_topic(
         .collect();
     let requests_before: Vec<ResearchRequest> = request_ids
         .iter()
-        .filter_map(|id| {
-            request_index
-                .get(id)
-                .map(|request| (*request).clone())
-        })
+        .filter_map(|id| request_index.get(id).map(|request| (*request).clone()))
         .collect();
     let runs_before = capture_runs(store, &run_ids);
     store.move_topic_project(topic, project)?;
@@ -1388,7 +1403,8 @@ fn validate_requests(
     deltas: &[RequestDelta],
     index: &std::collections::HashMap<u64, usize>,
 ) -> Result<(), ScopedEditError> {
-    let message = "The research request changed after this action. Undo would overwrite newer work.";
+    let message =
+        "The research request changed after this action. Undo would overwrite newer work.";
     for delta in deltas {
         let Some(request) = index
             .get(&delta.key())
@@ -1492,11 +1508,7 @@ fn apply_topic_structural(store: &mut Store, delta: &TopicDelta) {
     }
 }
 
-fn apply_task(
-    store: &mut Store,
-    delta: &TaskDelta,
-    index: &std::collections::HashMap<u64, usize>,
-) {
+fn apply_task(store: &mut Store, delta: &TaskDelta, index: &std::collections::HashMap<u64, usize>) {
     let Some(task) = index
         .get(&delta.key())
         .and_then(|position| store.task_at_index_mut(*position))
@@ -1539,12 +1551,13 @@ fn validate_created_parents(store: &Store, undo: &DomainUndo) -> Result<(), Scop
         let TopicDelta::Created(created) = delta else {
             continue;
         };
-        let referenced = store.tasks().iter().any(|task| {
-            task_topic_after_undo(store, task.id, undo) == Some(created.id)
-        }) || store
-            .research_requests()
+        let referenced = store
+            .tasks()
             .iter()
-            .any(|request| request_topic_after_undo(store, request.id, undo) == Some(created.id));
+            .any(|task| task_topic_after_undo(store, task.id, undo) == Some(created.id))
+            || store.research_requests().iter().any(|request| {
+                request_topic_after_undo(store, request.id, undo) == Some(created.id)
+            });
         if referenced {
             return Err(conflict(
                 "The newly created topic now contains work. Undo will not remove it.",
@@ -1642,7 +1655,10 @@ fn request_topic_after_undo(store: &Store, id: u64, undo: &DomainUndo) -> Option
 }
 
 fn topic_project_after_undo(store: &Store, id: u64, undo: &DomainUndo) -> u64 {
-    let mut project = store.topic(id).map(|topic| topic.project_id).unwrap_or(u64::MAX);
+    let mut project = store
+        .topic(id)
+        .map(|topic| topic.project_id)
+        .unwrap_or(u64::MAX);
     for delta in &undo.topics {
         if delta.key() == id
             && let TopicDelta::Project { before, .. } = delta
@@ -1752,7 +1768,9 @@ mod tests {
     #[test]
     fn same_inverse_created_topic_is_removed_with_its_restored_child() {
         let mut store = Store::empty();
-        let parent = store.create_task("Parent", 1, Stage::Backlog, None).unwrap();
+        let parent = store
+            .create_task("Parent", 1, Stage::Backlog, None)
+            .unwrap();
         let task = store.create_task("Task", 1, Stage::Backlog, None).unwrap();
         store.set_parent(task, Some(parent)).unwrap();
         let outcome = DomainCommand::TaskParent { task, parent: None }
@@ -1776,9 +1794,7 @@ mod tests {
         .execute(&mut store)
         .unwrap();
         let topic = outcome.created_topic.unwrap();
-        let child = store
-            .create_task("Child", 1, Stage::Backlog, None)
-            .unwrap();
+        let child = store.create_task("Child", 1, Stage::Backlog, None).unwrap();
         store.set_root_topic(child, topic).unwrap();
         let before_attempt = store.clone();
         let before_pending = pending(&store);
@@ -1797,17 +1813,21 @@ mod tests {
         store.set_default_model("provider/base".to_string());
         let before = store.clone();
         let before_pending = pending(&store);
-        assert!(DomainCommand::UseGlobalForStage { stage: 4 }
-            .execute(&mut store)
-            .is_err());
+        assert!(
+            DomainCommand::UseGlobalForStage { stage: 4 }
+                .execute(&mut store)
+                .is_err()
+        );
         assert_eq!(store, before);
         assert_eq!(pending(&store), before_pending);
-        assert!(DomainCommand::ModelAgent {
-            stage: Some(usize::MAX),
-            agent: "Codex".into(),
-        }
-        .execute(&mut store)
-        .is_err());
+        assert!(
+            DomainCommand::ModelAgent {
+                stage: Some(usize::MAX),
+                agent: "Codex".into(),
+            }
+            .execute(&mut store)
+            .is_err()
+        );
         assert_eq!(store, before);
         assert_eq!(pending(&store), before_pending);
     }
@@ -1815,9 +1835,7 @@ mod tests {
     #[test]
     fn fallback_agent_change_clears_stale_model_and_undoes() {
         let mut store = Store::empty();
-        store
-            .research_config_mut()
-            .fallback_model = "stale/provider-model".into();
+        store.research_config_mut().fallback_model = "stale/provider-model".into();
         let outcome = DomainCommand::FallbackModelAgent {
             agent: "Codex".into(),
         }
@@ -1890,15 +1908,15 @@ mod tests {
             .as_mut()
             .unwrap()
             .requires_approval = true;
-        store.set_stage(goal, Stage::Planned).unwrap();
+        store.set_stage(goal, Stage::InProgress).unwrap();
         store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
         // Applying the plan invalidates any earlier approval; reapprove the
         // complete goal before preparing child runs.
-        store.set_stage(goal, Stage::Planned).unwrap();
+        store.set_stage(goal, Stage::InProgress).unwrap();
         store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
         for step in &steps {
-            store.set_stage(*step, Stage::Planned).unwrap();
+            store.set_stage(*step, Stage::InProgress).unwrap();
             let mut run = store.prepare_run(*step).unwrap();
             run.status = "Succeeded".into();
             run.output = format!("Completed report for {step}");
@@ -2035,7 +2053,7 @@ mod tests {
             .as_mut()
             .unwrap()
             .requires_approval = true;
-        store.set_stage(goal, Stage::Planned).unwrap();
+        store.set_stage(goal, Stage::InProgress).unwrap();
         let mut steps = Vec::with_capacity(affected);
         for index in 0..affected {
             let id = goal + 1 + index as u64;
@@ -2053,11 +2071,8 @@ mod tests {
                 project_id: 1,
                 topic_id: None,
                 approved_plan: None,
-                stage: Stage::Planned,
-                priority: crate::domain::Priority::None,
+                stage: Stage::InProgress,
                 labels: Vec::new(),
-                cycle: None,
-                bucket: String::new(),
                 due_date: String::new(),
                 parent_id: None,
                 comments: Vec::new(),
@@ -2224,11 +2239,7 @@ mod tests {
             store.task(goal).unwrap().approved_plan,
             store.goal_plan_signature(goal)
         );
-        let live_after = store
-            .runs()
-            .iter()
-            .find(|run| run.id == 4_000_000)
-            .unwrap();
+        let live_after = store.runs().iter().find(|run| run.id == 4_000_000).unwrap();
         assert_eq!(live_after.status, live_snapshot.status);
         assert_eq!(live_after.output, live_snapshot.output);
         assert_eq!(live_after.logs, live_snapshot.logs);
@@ -2316,14 +2327,13 @@ mod tests {
                     .iter()
                     .rev()
                     .find(|run| run.task_id == *step && run.status != "Simulated");
-                panic!("step {step} invalid after move: signature={signature:?} run={:?}", run.map(|run| (&run.input_signature, &run.status, run.output.len())));
+                panic!(
+                    "step {step} invalid after move: signature={signature:?} run={:?}",
+                    run.map(|run| (&run.input_signature, &run.status, run.output.len()))
+                );
             }
         }
-        let live_after = store
-            .runs()
-            .iter()
-            .find(|run| run.id == 999_999)
-            .unwrap();
+        let live_after = store.runs().iter().find(|run| run.id == 999_999).unwrap();
         assert_eq!(live_after.status, live_snapshot.status);
         assert_eq!(live_after.output, live_snapshot.output);
         assert_eq!(live_after.logs, live_snapshot.logs);
@@ -2332,18 +2342,17 @@ mod tests {
         apply_undo(&mut store, &outcome.undo).unwrap();
         let undo_elapsed = started.elapsed();
         assert_eq!(store.topic(topic).unwrap().project_id, 1);
-        assert_eq!(store.task(goal).unwrap().approved_plan, store.goal_plan_signature(goal));
+        assert_eq!(
+            store.task(goal).unwrap().approved_plan,
+            store.goal_plan_signature(goal)
+        );
         for step in &steps {
             assert!(
                 store.research_result(*step).is_some(),
                 "Undo restores reusable results with 43,200 history records"
             );
         }
-        let live_after = store
-            .runs()
-            .iter()
-            .find(|run| run.id == 999_999)
-            .unwrap();
+        let live_after = store.runs().iter().find(|run| run.id == 999_999).unwrap();
         assert_eq!(live_after.status, live_snapshot.status);
         assert_eq!(live_after.output, live_snapshot.output);
         assert_eq!(live_after.logs, live_snapshot.logs);

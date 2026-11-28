@@ -95,7 +95,9 @@ pub(crate) fn undo_settings_change(
             store.set_max_concurrent_runs(limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS));
         }
         SettingsChange::AutomationConcurrency(limit) => {
-            store.set_max_concurrent_automations(limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS));
+            store.set_max_concurrent_automations(
+                limit.clamp(1, crate::scheduler::MAX_CONCURRENT_RUNS),
+            );
         }
         SettingsChange::LiquidGlass(enabled) => store.set_liquid_glass(enabled),
         SettingsChange::Appearance(mode) => {
@@ -118,9 +120,13 @@ mod tests {
         store.set_appearance(crate::appearance::Appearance::Dark);
         let undo = apply_settings_change(&mut store, SettingsChange::LiquidGlass(true)).unwrap();
         assert!(store.liquid_glass());
-        assert_eq!(apply_settings_change(&mut store, SettingsChange::LiquidGlass(true)), Err(SettingsError::NoChange));
+        assert_eq!(
+            apply_settings_change(&mut store, SettingsChange::LiquidGlass(true)),
+            Err(SettingsError::NoChange)
+        );
         assert!(store.pending_metadata_deltas().iter().any(|delta| matches!(
-            delta, crate::persistence_journal::MetadataDelta::LiquidGlass(true)
+            delta,
+            crate::persistence_journal::MetadataDelta::LiquidGlass(true)
         )));
         undo_settings_change(&mut store, &undo).unwrap();
         assert!(!store.liquid_glass());

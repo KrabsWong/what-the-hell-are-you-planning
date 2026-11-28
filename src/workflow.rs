@@ -56,11 +56,18 @@ impl TaskStatus {
         if let Some(label) = &self.display_label {
             return label.clone();
         }
-        let phase = phase_label(self.phase);
-        if self.execution.label() == self.phase.label() || self.execution == ExecutionStatus::Done {
-            phase.into()
+        let execution = self.execution.label();
+        if self.phase == Stage::Backlog
+            || execution == self.phase.label()
+            || self.execution == ExecutionStatus::Done
+        {
+            execution.into()
         } else {
-            format!("{phase} · {}", crate::i18n::tr_string(self.execution.label()))
+            format!(
+                "{} · {}",
+                phase_label(self.phase),
+                crate::i18n::tr_string(execution)
+            )
         }
     }
 }
@@ -80,7 +87,11 @@ impl Store {
         if let Some(archived) = crate::archive_presentation::presentation(self, id) {
             return TaskStatus {
                 phase: archived.phase,
-                execution: if archived.complete { Done } else { Stage(archived.phase) },
+                execution: if archived.complete {
+                    Done
+                } else {
+                    Stage(archived.phase)
+                },
                 group: None,
                 reason: archived.reason,
                 display_label: Some(archived.label),
@@ -100,7 +111,10 @@ impl Store {
         let ordinary_submitted = batch.is_some_and(|b| b.contains_pending(goal))
             || self.runs().iter().any(|r| {
                 r.project_plan.is_none()
-                    && matches!(r.status.as_str(), "Queued" | "Running" | "Cancelling" | "Recovering")
+                    && matches!(
+                        r.status.as_str(),
+                        "Queued" | "Running" | "Cancelling" | "Recovering"
+                    )
                     && (r.task_id == id
                         || (goal == id && self.owning_research_goal(r.task_id) == Some(id)))
             });
@@ -119,7 +133,7 @@ impl Store {
         let stopped = !automation_step
             && !submitted
             && task.is_some_and(|t| t.stage == crate::domain::Stage::InProgress)
-            && matches!(execution, Ready | Waiting | Stage(crate::domain::Stage::InProgress));
+            && matches!(execution, Stage(crate::domain::Stage::InProgress));
         if stopped {
             execution = Paused;
         }
@@ -129,17 +143,22 @@ impl Store {
             {
                 crate::domain::Stage::Cancelled
             }
-            Running | Queued | Retrying | Paused | Stopping => crate::domain::Stage::InProgress,
-            Blocked if task.is_some_and(|t| t.stage != crate::domain::Stage::Cancelled) => {
-                crate::domain::Stage::InProgress
-            }
+            Running => crate::domain::Stage::InProgress,
+            Queued | Retrying | Paused | Stopping if submitted => crate::domain::Stage::InProgress,
+            Waiting if submitted => crate::domain::Stage::InProgress,
+            Blocked => task
+                .map(|t| t.stage)
+                .unwrap_or(crate::domain::Stage::Backlog),
+            Queued | Retrying | Paused | Stopping | Blocked => task
+                .map(|t| t.stage)
+                .unwrap_or(crate::domain::Stage::Backlog),
             Done => crate::domain::Stage::Done,
-            Approval => crate::domain::Stage::Backlog,
             Waiting | Ready => {
                 if submitted {
                     crate::domain::Stage::InProgress
                 } else {
-                    crate::domain::Stage::Planned
+                    task.map(|t| t.stage)
+                        .unwrap_or(crate::domain::Stage::Backlog)
                 }
             }
             Stage(stage) => stage,
@@ -159,8 +178,7 @@ impl Store {
         let mut reason = if let Some(eligibility) = &eligibility {
             eligibility.reason(self, id)
         } else if stopped {
-            "Execution is not queued. Submit again to continue; completed results are kept."
-                .into()
+            "Execution is not queued. Submit again to continue; completed results are kept.".into()
         } else if execution == Waiting {
             let missing = task
                 .and_then(|t| t.research.as_ref())
@@ -234,7 +252,12 @@ impl Store {
                 .into_iter()
                 .filter_map(|state| {
                     let count = states.iter().filter(|value| **value == state).count();
-                    (count > 0).then(|| format!("{count} {}", crate::i18n::tr_string(state.label()).to_lowercase()))
+                    (count > 0).then(|| {
+                        format!(
+                            "{count} {}",
+                            crate::i18n::tr_string(state.label()).to_lowercase()
+                        )
+                    })
                 })
                 .collect::<Vec<_>>()
                 .join(" · ");
@@ -263,7 +286,13 @@ impl Store {
         if self.task_is_archived(id) {
             return Err("Restore this task before changing its status.".into());
         }
-        if task.parent_id.is_some() && task.research.is_some() {
+        if task.parent_id.is_some()
+            && task.research.is_some()
+            && task
+                .research
+                .as_ref()
+                .is_some_and(|research| research.kind != ResearchKind::Goal)
+        {
             return Err("Research steps follow their dependencies automatically. Submit or review the complete goal.".into());
         }
         let status = self.task_status(id, batch);
@@ -271,7 +300,7 @@ impl Store {
         let busy = batch.is_some_and(|b| b.contains_pending(goal))
             || self.runs().iter().any(|r| {
                 r.project_plan.is_none()
-                    && (r.task_id == id || self.owning_research_goal(r.task_id) == Some(id))
+                    && (r.task_id == id || self.owning_research_goal(r.task_id) == Some(goal))
                     && matches!(
                         r.status.as_str(),
                         "Queued" | "Running" | "Cancelling" | "Recovering"
@@ -284,19 +313,17 @@ impl Store {
             return Ok(());
         }
         if target == Stage::InProgress {
-            if !matches!(status.phase, Stage::Planned | Stage::InProgress) {
-                return Err(
-                    "Move the task to Todo and approve its plan before submitting execution."
-                        .into(),
-                );
-            }
-            if task.research.is_none() {
+            if task
+                .research
+                .as_ref()
+                .is_none_or(|r| r.kind != ResearchKind::Goal)
+            {
                 return Err("Only research goals can be submitted for execution.".into());
             }
-            if !self.goal_execution_approved(id) {
-                return Err(
-                    "Review and approve the complete research plan before executing.".into(),
-                );
+            if task.research.as_ref().is_some_and(|r| r.requires_approval)
+                && !self.goal_execution_approved(id)
+            {
+                return Err("Review and run this research goal from its detail page.".into());
             }
             self.validate_goal_dependencies(id)?;
             return Ok(());
@@ -305,23 +332,20 @@ impl Store {
         // it cannot reach Review through a run. Let the user record its
         // completion directly at any parent depth. Research steps and research
         // goals never take this path because the checks above reject them.
-        let manual_child_completion = target == Stage::Done
-            && status.phase == Stage::Planned
-            && task.parent_id.is_some()
-            && task.research.is_none();
-        let allowed = matches!(
-            (status.phase, target),
-            (Stage::Backlog, Stage::Planned)
-                | (Stage::Planned, Stage::Backlog)
-                | (Stage::InProgress, Stage::Review)
-                | (Stage::Review, Stage::Done)
-                | (Stage::Cancelled, Stage::Planned)
-        ) || manual_child_completion
-            || (target == Stage::Cancelled
-                && !matches!(status.phase, Stage::Done | Stage::Cancelled));
+        let allowed =
+            matches!(
+                (status.phase, target),
+                (Stage::InProgress, Stage::Review)
+                    | (Stage::Review, Stage::Done)
+                    | (Stage::Backlog, Stage::InProgress)
+                    | (Stage::InProgress, Stage::Backlog)
+                    | (Stage::Cancelled, Stage::InProgress)
+            ) || (target == Stage::Done && task.parent_id.is_some() && task.research.is_none())
+                || (target == Stage::Cancelled
+                    && !matches!(status.phase, Stage::Done | Stage::Cancelled));
         if !allowed {
             return Err(format!(
-                "Cannot move {} → {}. Follow the workflow order; running work cannot move back to Todo.",
+                "Cannot move {} → {}. Follow the workflow order; running work cannot move backward.",
                 phase_label(status.phase),
                 phase_label(target)
             ));
@@ -331,11 +355,14 @@ impl Store {
             .as_ref()
             .is_some_and(|r| r.kind == ResearchKind::Goal)
         {
-            if matches!(target, Stage::Review | Stage::Done) && !self.goal_tasks_complete(id) {
+            if target == Stage::Done && !self.goal_tasks_complete(id) {
                 return Err("Complete all research dependencies and obtain current results before finishing this goal.".into());
             }
-            if target == Stage::Planned {
-                self.validate_goal_dependencies(id)?;
+            if target == Stage::Review && self.validate_goal_dependencies(id).is_err() {
+                return Err(
+                    "Review the goal's complete plan and dependencies before moving to Review."
+                        .into(),
+                );
             }
         }
         if target == Stage::Review
@@ -398,9 +425,12 @@ mod tests {
     }
     #[test]
     fn submission_changes_phase_without_faking_running_and_keeps_dependencies_waiting() {
-        let (store, goal, ids, batch) = fixture();
-        assert_eq!(store.task_status(goal, None).phase, Stage::Planned);
-        assert_eq!(store.task_status(ids[0], None).group, None);
+        let (mut store, goal, ids, batch) = fixture();
+        store.set_stage(goal, Stage::InProgress).unwrap();
+        assert_eq!(store.task_status(goal, None).phase, Stage::InProgress);
+        let first = store.task_status(ids[0], None);
+        assert_eq!(first.phase, Stage::InProgress);
+        assert_eq!(first.group, Some(ExecutionGroup::Queued));
         assert_eq!(
             store.task_status(goal, Some(&batch)).group,
             Some(ExecutionGroup::Queued)
@@ -412,12 +442,13 @@ mod tests {
         assert!(waiting.reason.contains("automatically"));
         assert!(AllStatus::Stage(Stage::InProgress).matches(&waiting));
         assert!(AllStatus::Execution(ExecutionGroup::Waiting).matches(&waiting));
-        assert!(!AllStatus::Stage(Stage::Planned).matches(&waiting));
+        assert!(!AllStatus::Stage(Stage::Backlog).matches(&waiting));
         assert!(store.runs().is_empty());
     }
     #[test]
     fn aggregate_running_wins_over_waiting_and_pause_and_retry_have_separate_groups() {
         let (mut store, goal, ids, mut batch) = fixture();
+        store.set_stage(goal, Stage::InProgress).unwrap();
         let mut run = store.prepare_run(ids[0]).unwrap();
         run.status = "Running".into();
         store.push_run(run);
@@ -425,10 +456,9 @@ mod tests {
         let state = store.task_status(goal, Some(&batch));
         assert_eq!(state.group, Some(ExecutionGroup::Running));
         assert!(state.reason.contains("1 running"));
-        assert_eq!(
-            store.task_status(ids[1], Some(&batch)).group,
-            Some(ExecutionGroup::Attention)
-        );
+        let waiting = store.task_status(ids[1], Some(&batch));
+        assert_eq!(waiting.phase, Stage::InProgress);
+        assert_eq!(waiting.group, Some(ExecutionGroup::Attention));
         batch.state = BatchState::Running;
         store.run_at_mut(0).unwrap().status = "Queued".into();
         store.run_at_mut(0).unwrap().auto_retry_attempt = 1;
@@ -462,24 +492,13 @@ mod tests {
         assert_eq!(store, before);
         assert!(
             store
-                .validate_manual_transition(id, Stage::Planned, None)
-                .is_ok()
-        );
-        store.set_stage(id, Stage::Planned).unwrap();
-        assert!(
-            store
                 .validate_manual_transition(id, Stage::InProgress, None)
                 .is_err()
         );
         store.set_stage(id, Stage::InProgress).unwrap();
         assert!(
             store
-                .validate_manual_transition(id, Stage::Planned, None)
-                .is_err()
-        );
-        assert!(
-            store
-                .validate_manual_transition(id, Stage::Backlog, None)
+                .validate_manual_transition(id, Stage::InProgress, None)
                 .is_err()
         );
         assert!(
@@ -507,7 +526,7 @@ mod tests {
         );
         assert!(
             store
-                .validate_manual_transition(goal, Stage::Planned, None)
+                .validate_manual_transition(goal, Stage::InProgress, None)
                 .is_err()
         );
     }
@@ -515,7 +534,7 @@ mod tests {
     fn ordinary_child_tasks_are_manually_completable_without_weakening_research_rules() {
         let (mut store, goal, ids, _) = fixture();
         let child = store
-            .create_task("Manual child", 1, Stage::Planned, Some(goal))
+            .create_task("Manual child", 1, Stage::InProgress, Some(goal))
             .unwrap();
         assert!(store.task(child).unwrap().research.is_none());
         assert!(
@@ -529,7 +548,7 @@ mod tests {
         // The exception is limited to non-research children. Root tasks,
         // research goals and research steps still follow the normal matrix.
         let root = store
-            .create_task("Root task", 1, Stage::Planned, None)
+            .create_task("Root task", 1, Stage::InProgress, None)
             .unwrap();
         assert!(
             store
@@ -539,7 +558,7 @@ mod tests {
         // The manual exception deliberately applies to any non-research child,
         // including a child of an ordinary parent task.
         let nested = store
-            .create_task("Nested manual child", 1, Stage::Planned, Some(root))
+            .create_task("Nested manual child", 1, Stage::InProgress, Some(root))
             .unwrap();
         assert!(
             store
@@ -562,7 +581,7 @@ mod tests {
     fn ordinary_success_enters_review_and_internal_recovery_remains_possible() {
         let (mut store, _, _, _) = fixture();
         let id = store
-            .create_task("Ordinary", 1, Stage::Planned, None)
+            .create_task("Ordinary", 1, Stage::InProgress, None)
             .unwrap();
         store.replace_policies(Store::mock().policies().to_vec());
         store.simulate_run(id).unwrap();
@@ -570,7 +589,7 @@ mod tests {
         assert_eq!(store.task_status(id, None).phase, Stage::Review);
         assert!(
             store
-                .validate_manual_transition(id, Stage::Planned, None)
+                .validate_manual_transition(id, Stage::InProgress, None)
                 .is_err()
         );
         assert!(
@@ -582,7 +601,7 @@ mod tests {
         assert_eq!(store.task_status(id, None).phase, Stage::Done);
         // Runtime rollback is deliberately separate from manual actions.
         store.set_stage(id, Stage::InProgress).unwrap();
-        store.set_stage(id, Stage::Planned).unwrap();
+        store.set_stage(id, Stage::InProgress).unwrap();
     }
     #[test]
     fn approval_archiving_and_dependency_validation_cannot_be_bypassed() {
@@ -609,13 +628,13 @@ mod tests {
             .depends_on = vec![ids[1]];
         assert!(
             store
-                .validate_manual_transition(goal, Stage::Planned, None)
+                .validate_manual_transition(goal, Stage::InProgress, None)
                 .is_err()
         );
         store.task_mut(goal).unwrap().archived = true;
         assert!(
             store
-                .validate_manual_transition(goal, Stage::Planned, None)
+                .validate_manual_transition(goal, Stage::InProgress, None)
                 .is_err()
         );
     }

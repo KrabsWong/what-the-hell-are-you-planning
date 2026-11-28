@@ -374,7 +374,7 @@ print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
             cx.update_window(handle, |_, w, cx| {
                 assert!(app.read(cx).store.tasks().is_empty());
                 assert!(app.read(cx).store.runs().is_empty());
-                w.click("new-task", cx);
+                app.update(cx, |a, cx| a.open_project_plan(1, w, cx));
                 w.render_frame(cx);
                 w.click("project-plan-brief", cx);
                 w.input("Workspace QA: materials and research task", cx);

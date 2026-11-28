@@ -42,14 +42,24 @@ fn probe_agent(agent: &str, path: &str) -> Result<String, String> {
     }
     let version = crate::opencode::capture(Path::new(path), &std::env::temp_dir(), &["--version"])?;
     if version.trim().is_empty() {
-        return Err(format!("{agent} returned no version. Check the executable path."));
+        return Err(format!(
+            "{agent} returned no version. Check the executable path."
+        ));
     }
     Ok(version.trim().to_owned())
 }
 impl TaskApp {
-    pub(crate) fn begin_workspace_open(&mut self, storage: crate::persistence::Storage, cx: &mut Context<Self>) {
-        if self.startup.workspace_pending.is_some() { return; }
-        if self.pending_workspace_switch.is_some() { return; }
+    pub(crate) fn begin_workspace_open(
+        &mut self,
+        storage: crate::persistence::Storage,
+        cx: &mut Context<Self>,
+    ) {
+        if self.startup.workspace_pending.is_some() {
+            return;
+        }
+        if self.pending_workspace_switch.is_some() {
+            return;
+        }
         // A clean retry of the current workspace must not unlink/reopen its
         // database while the old worker/read threads may still be closing it.
         // Reuse the attached store and only retry the failed worker/reader.
@@ -57,12 +67,10 @@ impl TaskApp {
             .storage
             .as_ref()
             .is_some_and(|current| current.path() == storage.path());
-        if same_open_workspace
-            && self.storage.is_some()
-            && self.live_clean_for_quit()
-        {
+        if same_open_workspace && self.storage.is_some() && self.live_clean_for_quit() {
             self.storage_error.clear();
-            if self.live_required && !self.live_persistence_active()
+            if self.live_required
+                && !self.live_persistence_active()
                 && let Err(error) = self.retry_live_attachment(cx)
             {
                 self.storage_error = error;
@@ -126,8 +134,12 @@ impl TaskApp {
     }
 
     pub(crate) fn poll_pending_workspace_switch(&mut self, cx: &mut Context<Self>) {
-        if self.startup.workspace_pending.is_some() { return; }
-        let Some(storage) = self.pending_workspace_switch.take() else { return; };
+        if self.startup.workspace_pending.is_some() {
+            return;
+        }
+        let Some(storage) = self.pending_workspace_switch.take() else {
+            return;
+        };
         let same_open_workspace = self
             .storage
             .as_ref()
@@ -205,7 +217,13 @@ impl TaskApp {
                     report("Loading your work…");
                     storage.load()?
                 };
-                Ok(PreparedWorkspace { storage, lock, store, backup, live })
+                Ok(PreparedWorkspace {
+                    storage,
+                    lock,
+                    store,
+                    backup,
+                    live,
+                })
             })();
             let _ = tx.send(WorkspaceOpenEvent::Complete(result));
         });
@@ -214,9 +232,16 @@ impl TaskApp {
     }
     pub(crate) fn poll_workspace_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         loop {
-            let event = match self.startup.workspace_pending.as_ref().map(|rx| rx.try_recv()) {
+            let event = match self
+                .startup
+                .workspace_pending
+                .as_ref()
+                .map(|rx| rx.try_recv())
+            {
                 Some(Ok(event)) => event,
-                Some(Err(mpsc::TryRecvError::Disconnected)) => WorkspaceOpenEvent::Complete(Err("Workspace preparation stopped. Please retry.".into())),
+                Some(Err(mpsc::TryRecvError::Disconnected)) => WorkspaceOpenEvent::Complete(Err(
+                    "Workspace preparation stopped. Please retry.".into(),
+                )),
                 _ => break,
             };
             match event {
@@ -234,11 +259,14 @@ impl TaskApp {
                                 window,
                                 cx,
                             );
-                            self.workspace_required = self.storage.is_none() || !self.storage_error.is_empty();
+                            self.workspace_required =
+                                self.storage.is_none() || !self.storage_error.is_empty();
                             if !self.workspace_required {
                                 self.startup.silent = self.startup.upgrade_backup.is_none();
                                 self.check_startup(cx);
-                            } else { self.startup.silent = false; }
+                            } else {
+                                self.startup.silent = false;
+                            }
                         }
                         Err(error) => {
                             self.storage_error = error;
@@ -252,10 +280,19 @@ impl TaskApp {
         }
     }
     pub fn check_startup(&mut self, cx: &mut Context<Self>) {
-        if self.workspace_required || self.startup.workspace_pending.is_some() || !self.storage_error.is_empty() { return; }
+        if self.workspace_required
+            || self.startup.workspace_pending.is_some()
+            || !self.storage_error.is_empty()
+        {
+            return;
+        }
         let paths = [
             self.executable_input.read(cx).value().trim().to_string(),
-            self.codex_executable_input.read(cx).value().trim().to_string(),
+            self.codex_executable_input
+                .read(cx)
+                .value()
+                .trim()
+                .to_string(),
         ];
         self.startup.paths = paths.clone();
         self.startup.checks = None;
@@ -282,18 +319,24 @@ impl TaskApp {
             .and_then(|rx| match rx.try_recv() {
                 Ok(checks) => Some(checks),
                 Err(mpsc::TryRecvError::Empty) => None,
-                Err(mpsc::TryRecvError::Disconnected) => Some(std::array::from_fn(|_| Err("Check stopped. Please retry.".into()))),
+                Err(mpsc::TryRecvError::Disconnected) => Some(std::array::from_fn(|_| {
+                    Err("Check stopped. Please retry.".into())
+                })),
             });
         if let Some(checks) = result {
             self.startup.pending = None;
-            self.opencode_version = checks[0].as_ref().ok()
+            self.opencode_version = checks[0]
+                .as_ref()
+                .ok()
                 .map(|version| (self.startup.paths[0].clone(), version.clone()));
             self.codex_version = checks[1].as_ref().ok().cloned();
             self.startup.checks = Some(checks);
-            let ready = self.startup_ready(cx)
-                && self.storage.is_some() && self.storage_error.is_empty();
+            let ready =
+                self.startup_ready(cx) && self.storage.is_some() && self.storage_error.is_empty();
             self.startup.finish_initial_check(ready);
-            if ready && !self.startup.required { self.check_interrupted_sessions(cx); }
+            if ready && !self.startup.required {
+                self.check_interrupted_sessions(cx);
+            }
             cx.notify();
         }
     }
@@ -306,15 +349,42 @@ impl TaskApp {
     }
     pub fn startup_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let colors = palette(cx);
-        if let Some(phase) = self.startup.workspace_phase.or(self.workspace_setup.as_ref().map(|_| "Preparing workspace files…")) {
-            return col().id("workspace-upgrading").size_full()
-                .bg(rgb(colors.canvas)).text_color(rgb(colors.text))
-                .items_center().justify_center().gap_4()
+        if let Some(phase) = self.startup.workspace_phase.or(self
+            .workspace_setup
+            .as_ref()
+            .map(|_| "Preparing workspace files…"))
+        {
+            return col()
+                .id("workspace-upgrading")
+                .size_full()
+                .bg(rgb(colors.canvas))
+                .text_color(rgb(colors.text))
+                .items_center()
+                .justify_center()
+                .gap_4()
                 .child(self.launch_logo.clone())
-                .child(col().items_center().gap_2()
-                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(selectable("Preparing your workspace")))
-                    .child(div().id("workspace-upgrade-phase").text_sm().text_color(rgb(colors.muted)).child(selectable(phase))))
-                .child(label("Your saved work stays here. Setup continues when this is finished.", cx))
+                .child(
+                    col()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_lg()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(selectable("Preparing your workspace")),
+                        )
+                        .child(
+                            div()
+                                .id("workspace-upgrade-phase")
+                                .text_sm()
+                                .text_color(rgb(colors.muted))
+                                .child(selectable(phase)),
+                        ),
+                )
+                .child(label(
+                    "Your saved work stays here. Setup continues when this is finished.",
+                    cx,
+                ))
                 .into_any_element();
         }
         if self.startup.silent {
@@ -348,14 +418,11 @@ impl TaskApp {
                     false,
                 );
             }
-            match self
-                .startup
-                .checks
-                .as_ref()
-                .map(|checks| &checks[index])
-            {
+            match self.startup.checks.as_ref().map(|checks| &checks[index]) {
                 Some(Ok(message)) => ("Ready", colors.success, message.clone(), true),
-                Some(Err(message)) if index < 2 => ("Unavailable", colors.muted, message.clone(), false),
+                Some(Err(message)) if index < 2 => {
+                    ("Unavailable", colors.muted, message.clone(), false)
+                }
                 Some(Err(message)) => ("Needs attention", colors.danger, message.clone(), false),
                 None => ("Checking…", colors.accent, String::new(), false),
             }
@@ -381,7 +448,9 @@ impl TaskApp {
                 "Checking…" | "Preparing…" => assets::IconName::Loader,
                 _ => assets::IconName::Circle,
             };
-            row().gap_1().child(gpui_kit::component::Icon::new(icon).size_4())
+            row()
+                .gap_1()
+                .child(gpui_kit::component::Icon::new(icon).size_4())
                 .flex_shrink_0()
                 .px_2()
                 .py_1()
@@ -396,7 +465,11 @@ impl TaskApp {
             row()
                 .justify_between()
                 .gap_2()
-                .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(title)))
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(selectable(title)),
+                )
                 .child(badge(state, color))
         };
         let card = || {
@@ -525,7 +598,6 @@ impl Startup {
                     || (checks[1].is_ok() && self.paths[1] == codex)
             })
     }
-
 }
 #[cfg(test)]
 mod tests {
@@ -550,7 +622,13 @@ mod tests {
     fn either_agent_is_sufficient_and_the_success_path_must_match() {
         for open in [false, true] {
             for codex in [false, true] {
-                let result = |ready| if ready { Ok("version".into()) } else { Err("missing".into()) };
+                let result = |ready| {
+                    if ready {
+                        Ok("version".into())
+                    } else {
+                        Err("missing".into())
+                    }
+                };
                 let mut startup = Startup {
                     paths: ["open".into(), "codex".into()],
                     checks: Some([result(open), result(codex)]),
@@ -571,13 +649,20 @@ mod tests {
     #[test]
     fn silent_start_skips_setup_only_when_ready() {
         for ready in [true, false] {
-            let mut startup = Startup { required: true, silent: true, ..Default::default() };
+            let mut startup = Startup {
+                required: true,
+                silent: true,
+                ..Default::default()
+            };
             startup.finish_initial_check(ready);
             assert!(!startup.silent);
             assert_eq!(startup.required, !ready);
         }
         // A manual retry must keep setup open so edited paths can be saved.
-        let mut startup = Startup { required: true, ..Default::default() };
+        let mut startup = Startup {
+            required: true,
+            ..Default::default()
+        };
         startup.finish_initial_check(true);
         assert!(startup.required);
     }

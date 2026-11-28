@@ -3,15 +3,20 @@
 //! Runs at 1440x920 and 1000x680. It uses the actual list/topic rows,
 //! period steps, footer/header commands and the shared Save/Discard/Stay dialog.
 
+use crate::app::{AllStatus, Scope, TaskApp};
 use crate::automation::{
     AutomationOccurrence, AutomationOccurrenceSnapshot, AutomationPolicy, AutomationShape,
     OccurrenceStatus, TimeWindow, TriggerSource,
 };
 use crate::automation_schedule::{Schedule, ScheduleSpec};
 use crate::domain::{Stage, Store};
-use crate::app::{AllStatus, Scope, TaskApp};
 use crate::persistence::Storage;
-use gpui_kit::{component::{Theme, ThemeMode}, prelude::*, test::TestWindowExt, *};
+use gpui_kit::{
+    component::{Theme, ThemeMode},
+    prelude::*,
+    test::TestWindowExt,
+    *,
+};
 use std::{path::Path, sync::Arc};
 
 const PLAN: &str = r#"{"tasks":[{"title":"Evidence","instructions":"Collect evidence","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write report","kind":"advise","depends_on":[1]}]}"#;
@@ -29,8 +34,13 @@ fn store(root: &Path) -> Store {
     let mut store = Store::empty();
     store.project_at_mut(0).unwrap().directory = root.to_string_lossy().into();
     store.set_default_model("fixture/navigation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     store
 }
 
@@ -66,7 +76,13 @@ fn add_extra_period(store: &mut Store, automation: u64, scheduled: i64) -> u64 {
             expected_result: definition.expected_result.clone(),
             shape: Some(definition.shape),
             template: definition.template.clone().unwrap(),
-            models: ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from),
+            models: [
+                "fixture/plan",
+                "fixture/collect",
+                "fixture/analyze",
+                "fixture/advise",
+            ]
+            .map(String::from),
             agents: Default::default(),
             materials: vec![],
             policy: definition.policy.clone(),
@@ -143,11 +159,17 @@ fn fixture(root: &Path) -> (Store, Fixture) {
             "Track public filings".into(),
             "A cited note".into(),
             Schedule {
-                spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                spec: ScheduleSpec::Daily {
+                    hour: 8,
+                    minute: 30,
+                },
                 timezone: "Asia/Shanghai".into(),
             },
             AutomationPolicy::default(),
-            Some(crate::automation_execution::build_template("Track public filings", "A cited note").unwrap()),
+            Some(
+                crate::automation_execution::build_template("Track public filings", "A cited note")
+                    .unwrap(),
+            ),
             1_000,
         )
         .unwrap();
@@ -169,7 +191,13 @@ fn fixture(root: &Path) -> (Store, Fixture) {
             expected_result: definition.expected_result.clone(),
             shape: Some(definition.shape),
             template: definition.template.clone().unwrap(),
-            models: ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from),
+            models: [
+                "fixture/plan",
+                "fixture/collect",
+                "fixture/analyze",
+                "fixture/advise",
+            ]
+            .map(String::from),
             agents: Default::default(),
             materials: vec![],
             policy: definition.policy.clone(),
@@ -214,7 +242,14 @@ fn fixture(root: &Path) -> (Store, Fixture) {
 }
 
 fn list_offset(app: &crate::app::TaskApp) -> f32 {
-    app.navigation.task_list_scroll.0.borrow().base_handle.offset().y.as_f32()
+    app.navigation
+        .task_list_scroll
+        .0
+        .borrow()
+        .base_handle
+        .offset()
+        .y
+        .as_f32()
 }
 
 fn scroll_over(w: &mut Window, id: ElementId, dy: f32, cx: &mut App) {
@@ -290,14 +325,22 @@ fn click_in(w: &mut Window, cx: &mut App, scroll: &str, id: &str) {
 fn open_period_step(w: &mut Window, cx: &mut App, task: u64) {
     let step = format!("automation-step-{task}");
     if w.try_find(step.clone()).is_none() {
-        click_in(w, cx, "automation-result-body", "automation-completed-steps");
+        click_in(
+            w,
+            cx,
+            "automation-result-body",
+            "automation-completed-steps",
+        );
         w.render_frame(cx);
     }
     click_in(w, cx, "automation-result-body", &step);
 }
 
 pub fn run() {
-    let root = std::env::temp_dir().join(format!("planning-navigation-context-qa-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!(
+        "planning-navigation-context-qa-{}",
+        std::process::id()
+    ));
     std::fs::create_dir_all(&root).unwrap();
     let (store, fixture) = fixture(&root);
     let path = root.join("workspace.sqlite3");
@@ -308,18 +351,23 @@ pub fn run() {
         Arc::new(crate::ui_assets::AppAssets),
         platform::current_headless_renderer,
     );
-    cx.update(|cx| { init(cx); Theme::change(ThemeMode::Light, None, cx); });
+    cx.update(|cx| {
+        init(cx);
+        Theme::change(ThemeMode::Light, None, cx);
+    });
     let mut app = None;
-    let window = cx.open_window(size(px(1440.), px(920.)), |w, cx| {
-        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| {
-            a.attach_storage(Storage::new(path.clone()), w, cx);
-            a.store = store.clone();
-            a.navigate(Scope::All, w, cx);
-        });
-        app = Some(view.clone());
-        cx.new(|cx| base::Root::new(view, w, cx))
-    }).unwrap();
+    let window = cx
+        .open_window(size(px(1440.), px(920.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_storage(Storage::new(path.clone()), w, cx);
+                a.store = store.clone();
+                a.navigate(Scope::All, w, cx);
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
     let app = app.unwrap();
     let handle: AnyWindowHandle = window.into();
 
@@ -328,14 +376,27 @@ pub fn run() {
         w.click("task-search", cx);
         w.input("Row", cx);
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
-        assert_eq!(app.read(cx).query(), "Row", "typing must settle into the filter");
+        assert_eq!(
+            app.read(cx).query(),
+            "Row",
+            "typing must settle into the filter"
+        );
         let first = app.read(cx).visible_tasks()[0].id;
-        scroll_over(w, ElementId::Name(format!("task-row-{first}").into()), -20.0, cx);
+        scroll_over(
+            w,
+            ElementId::Name(format!("task-row-{first}").into()),
+            -20.0,
+            cx,
+        );
         w.render_frame(cx);
-        assert!(list_offset(app.read(cx)) < -10.0, "precondition: list is scrolled");
+        assert!(
+            list_offset(app.read(cx)) < -10.0,
+            "precondition: list is scrolled"
+        );
         let id = app.read(cx).visible_tasks()[1].id;
         w.click(format!("task-row-{id}"), cx);
         w.render_frame(cx);
@@ -357,7 +418,11 @@ pub fn run() {
             .last()
             .map(|frame| &frame.route)
         {
-            assert_eq!(page.query(), "Row", "captured return frame must include the filter");
+            assert_eq!(
+                page.query(),
+                "Row",
+                "captured return frame must include the filter"
+            );
         } else {
             panic!("row drill-down captured the wrong return frame");
         }
@@ -369,8 +434,12 @@ pub fn run() {
             app.read(cx).navigation.pending_exit
         );
         assert_eq!(app.read(cx).query(), "Row", "list query must survive Back");
-        assert!(list_offset(app.read(cx)) < -10.0, "list scroll must be restored");
-    }).unwrap();
+        assert!(
+            list_offset(app.read(cx)) < -10.0,
+            "list scroll must be restored"
+        );
+    })
+    .unwrap();
 
     // 2. Topic list scroll survives opening a goal.
     cx.update_window(handle, |_, w, cx| {
@@ -401,7 +470,8 @@ pub fn run() {
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Topic(fixture.topic));
         assert!(app.read(cx).navigation.topic_scroll.offset().y < px(-10.));
-    }).unwrap();
+    })
+    .unwrap();
 
     // 3. Dirty task edit: Stay keeps text; Discard reverts; Save persists + leaves.
     cx.update_window(handle, |_, w, cx| {
@@ -418,15 +488,19 @@ pub fn run() {
         w.input(" changed", cx);
         w.press("escape", cx);
         w.render_frame(cx);
-        assert!(w.try_find("dirty-exit-stay").is_some(), "dirty navigation must ask");
+        assert!(
+            w.try_find("dirty-exit-stay").is_some(),
+            "dirty navigation must ask"
+        );
         w.click("dirty-exit-stay", cx);
         w.render_frame(cx);
         assert!(app.read(cx).draft.is_some(), "Stay keeps the draft");
         assert!(
-            app.read(cx)
-                .draft
-                .as_ref()
-                .is_some_and(|draft| draft.title.read(cx).value().contains(" changed")),
+            app.read(cx).draft.as_ref().is_some_and(|draft| draft
+                .title
+                .read(cx)
+                .value()
+                .contains(" changed")),
             "Stay keeps the typed input"
         );
         w.press("escape", cx);
@@ -459,7 +533,8 @@ pub fn run() {
                 .is_some_and(|task| task.title.contains(" saved")),
             "Save persists the edited title"
         );
-    }).unwrap();
+    })
+    .unwrap();
 
     // 4. Dirty automation wizard: Stay keeps the form, Discard leaves none.
     cx.update_window(handle, |_, w, cx| {
@@ -491,7 +566,10 @@ pub fn run() {
         );
         w.click("dirty-exit-stay", cx);
         w.render_frame(cx);
-        assert!(app.read(cx).automation_ui.creating, "Back + Stay keeps the wizard");
+        assert!(
+            app.read(cx).automation_ui.creating,
+            "Back + Stay keeps the wizard"
+        );
         w.click("location-automations", cx);
         w.render_frame(cx);
         assert!(
@@ -517,7 +595,8 @@ pub fn run() {
         w.render_frame(cx);
         assert!(!app.read(cx).automation_ui.creating);
         assert_eq!(app.read(cx).scope(), Scope::All);
-    }).unwrap();
+    })
+    .unwrap();
 
     // 4b. Dirty automation Save waits for the exact durable receipt and then
     // executes the requested exit once. Reopening/retyping a newer form must
@@ -580,7 +659,7 @@ pub fn run() {
         w.click("project-1", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).scope(), Scope::Project(1));
-        app.update(cx, |a, cx| a.request_new_research(w, cx));
+        app.update(cx, |a, cx| a.open_project_plan(1, w, cx));
         w.render_frame(cx);
         let before = app.read(cx).scope().clone();
         assert!(w.try_find("planning-destination").is_some());
@@ -588,7 +667,11 @@ pub fn run() {
             a.retarget_planning_destination(2, w, cx);
         });
         w.render_frame(cx);
-        assert_eq!(app.read(cx).planning_project, Some(2), "destination changed");
+        assert_eq!(
+            app.read(cx).planning_project,
+            Some(2),
+            "destination changed"
+        );
         assert_eq!(app.read(cx).planning_destination.unwrap().project(), 2);
         w.click("project-plan-brief", cx);
         w.input("Dirty planning text", cx);
@@ -645,9 +728,6 @@ pub fn run() {
         w.press("cmd-[", cx);
         w.render_frame(cx);
         check(w, cx, "Command-[");
-        w.press("cmd-n", cx);
-        w.render_frame(cx);
-        check(w, cx, "Command-N");
         w.click("planning-cancel", cx);
         w.render_frame(cx);
         check(w, cx, "Cancel");
@@ -674,7 +754,8 @@ pub fn run() {
             cx.notify();
         });
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
 
     // 6. Automation results filter + period -> step -> Back.
     cx.update_window(handle, |_, w, cx| {
@@ -715,7 +796,8 @@ pub fn run() {
             w.render_frame(cx);
         }
         assert!(
-            w.try_find(target).is_some_and(|snapshot| snapshot.visible()),
+            w.try_find(target)
+                .is_some_and(|snapshot| snapshot.visible()),
             "the target period must be scrolled into view"
         );
         let before_scroll = app.read(cx).automation_ui.scroll.offset().y;
@@ -741,7 +823,10 @@ pub fn run() {
         w.render_frame(cx);
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
         assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
-        assert_eq!(app.read(cx).automation_ui.result_filter, Some(fixture.automation));
+        assert_eq!(
+            app.read(cx).automation_ui.result_filter,
+            Some(fixture.automation)
+        );
         assert_eq!(app.read(cx).automation_ui.scroll.offset().y, before_scroll);
 
         // The same live-focus invariant keeps the global-search shortcut working.
@@ -758,44 +843,32 @@ pub fn run() {
         w.render_frame(cx);
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
 
-        // Typing focus still follows the real input click after the transition.
+        // The restored step page keeps its live Back control focused after the
+        // transition, without a task-detail text editor.
         open_period_step(w, cx, analysis);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "task-activity-toggle");
-        click_in(w, cx, "detail-scroll", "comment-input");
-        w.input("typing focus preserved", cx);
-        let comment_focus = app.read(cx).comment.read(cx).focus_handle(cx);
-        assert_eq!(
-            w.focused(cx),
-            Some(comment_focus),
-            "the comment editor owns keyboard focus after the real click"
-        );
-        assert!(
-            app.read(cx).comment.read(cx).value().contains("typing focus preserved"),
-            "the restored task page must keep typed input focus"
-        );
-        // Cmd-[ belongs to the text-editing key context while the comment input
-        // is focused; Back navigation still works through its live rendered
-        // control after typing.
-        w.press("cmd-a", cx);
-        w.press("backspace", cx);
+        assert_eq!(w.focused(cx), Some(app.read(cx).focus.clone()));
         w.click("navigation-back", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
         assert_eq!(app.read(cx).scope(), Scope::AutomationRuns);
-        assert_eq!(app.read(cx).automation_ui.result_filter, Some(fixture.automation));
+        assert_eq!(
+            app.read(cx).automation_ui.result_filter,
+            Some(fixture.automation)
+        );
         assert_eq!(
             app.read(cx).automation_ui.scroll.offset().y,
             before_scroll,
             "automation results scroll restored exactly"
         );
-    }).unwrap();
+    })
+    .unwrap();
 
     // 7. Save failure leaves the composer and retry saves exactly once.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
-        app.update(cx, |a, cx| a.request_new_research(w, cx));
+        app.update(cx, |a, cx| a.open_project_plan(1, w, cx));
         w.render_frame(cx);
         w.click("project-plan-brief", cx);
         w.input("One saved request", cx);
@@ -809,7 +882,8 @@ pub fn run() {
         w.click("save-project-context", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).store.research_requests().len(), before + 1);
-    }).unwrap();
+    })
+    .unwrap();
 
     // 8. Search from empty results returns to the same empty results page.
     cx.update_window(handle, |_, w, cx| {
@@ -820,7 +894,8 @@ pub fn run() {
         w.click("global-search-input", cx);
         w.input("Research goal", cx);
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         let id = format!("global-search-result-research-{}", fixture.goal);
@@ -835,7 +910,8 @@ pub fn run() {
         assert_eq!(app.read(cx).scope(), Scope::Runs);
         assert!(app.read(cx).selected().is_none());
         assert!(app.read(cx).task_result_context().is_none());
-    }).unwrap();
+    })
+    .unwrap();
 
     // 9. Every task-edit field participates in the same dirty decision, and
     // Discard never persists it.
@@ -847,28 +923,6 @@ pub fn run() {
         // TITLE is covered in section 3. DESCRIPTION/DUE/CYCLE are part of the
         // same pure baseline (draft_exit unit test); here the remaining exposed
         // controls get a real edit/Stay/Discard pass.
-
-        // LABELS
-        open_task_editor(w, cx, id);
-        w.click("draft-labels", cx);
-        w.input("qa-label", cx);
-        w.click("cancel-draft", cx);
-        w.render_frame(cx);
-        assert!(w.try_find("dirty-exit-stay").is_some());
-        w.click("dirty-exit-stay", cx);
-        w.render_frame(cx);
-        assert!(
-            app.read(cx)
-                .draft
-                .as_ref()
-                .is_some_and(|draft| draft.labels.read(cx).value().contains("qa-label")),
-            "a label edit marks the draft dirty"
-        );
-        w.click("cancel-draft", cx);
-        w.render_frame(cx);
-        w.click("dirty-exit-discard", cx);
-        w.render_frame(cx);
-        assert!(app.read(cx).store.task(id).is_some_and(|task| task.labels.is_empty()));
 
         // STAGE
         open_task_editor(w, cx, id);
@@ -884,7 +938,7 @@ pub fn run() {
         w.render_frame(cx);
         assert_eq!(
             app.read(cx).draft.as_ref().map(|draft| draft.stage),
-            Some(Stage::Planned)
+            Some(Stage::InProgress)
         );
         w.click("cancel-draft", cx);
         w.render_frame(cx);
@@ -913,7 +967,8 @@ pub fn run() {
         w.click("dirty-exit-discard", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).store.task(id).unwrap().project_id, 1);
-    }).unwrap();
+    })
+    .unwrap();
 
     // 10. The modal task editor blocks background mouse routes by design; they
     // must do nothing rather than drop or activate anything underneath. Visible
@@ -967,9 +1022,6 @@ pub fn run() {
         w.press("cmd-[", cx);
         w.render_frame(cx);
         check(w, cx, "Command-[");
-        w.press("cmd-n", cx);
-        w.render_frame(cx);
-        check(w, cx, "Command-N");
         w.click("cancel-draft", cx);
         w.render_frame(cx);
         check(w, cx, "Cancel");
@@ -992,33 +1044,25 @@ pub fn run() {
         w.click("dirty-exit-discard", cx);
         w.render_frame(cx);
         assert!(app.read(cx).draft.is_none());
-    }).unwrap();
+    })
+    .unwrap();
 
-    // 11. A per-task comment and the Market research composer are preserved,
-    // not treated as unsaved structural edits.
+    // 11. The Market research composer is preserved, not treated as an
+    // unsaved structural edit.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
         let id = app.read(cx).visible_tasks()[0].id;
         w.click(format!("task-row-{id}"), cx);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "task-activity-toggle");
-        click_in(w, cx, "detail-scroll", "comment-input");
-        w.input("preserved note", cx);
         w.click("all", cx);
         w.render_frame(cx);
         assert!(
             w.try_find("dirty-exit-stay").is_none(),
-            "a comment is preserved without a decision"
+            "opening a task without a form needs no decision"
         );
         w.click(format!("task-row-{id}"), cx);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "task-activity-toggle");
-        click_in(w, cx, "detail-scroll", "comment-input");
-        assert!(
-            app.read(cx).comment.read(cx).value().contains("preserved note"),
-            "the per-task comment survives leaving and reopening the task"
-        );
 
         app.update(cx, |a, cx| a.navigate(Scope::Research, w, cx));
         w.render_frame(cx);
@@ -1035,13 +1079,23 @@ pub fn run() {
         app.update(cx, |a, cx| a.navigate(Scope::Research, w, cx));
         w.render_frame(cx);
         assert!(
-            app.read(cx).research_title.read(cx).value().contains("Parked title")
-                && app.read(cx).research_brief.read(cx).value().contains("Parked brief"),
+            app.read(cx)
+                .research_title
+                .read(cx)
+                .value()
+                .contains("Parked title")
+                && app
+                    .read(cx)
+                    .research_brief
+                    .read(cx)
+                    .value()
+                    .contains("Parked brief"),
             "the Market composer draft returns with its destination"
         );
         app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
 
     screenshot(&mut cx, handle, &root, "navigation-context.png");
     for (width, height, theme) in [
@@ -1051,14 +1105,7 @@ pub fn run() {
         (1440.0, 920.0, ThemeMode::Light),
     ] {
         size_theme_pass(
-            &mut cx,
-            &store,
-            &path,
-            &root,
-            &fixture,
-            width,
-            height,
-            theme,
+            &mut cx, &store, &path, &root, &fixture, width, height, theme,
         );
     }
     println!("Navigation context QA passed · {}", root.display());
@@ -1085,7 +1132,11 @@ fn size_theme_pass(
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.attach_storage(Storage::new(path.clone()), w, cx);
-                assert!(a.storage_error.is_empty(), "fixture storage: {}", a.storage_error);
+                assert!(
+                    a.storage_error.is_empty(),
+                    "fixture storage: {}",
+                    a.storage_error
+                );
                 a.store = store.clone();
                 Theme::change(theme, Some(w), cx);
                 a.navigate(Scope::All, w, cx);
@@ -1163,7 +1214,7 @@ fn size_theme_pass(
     cx.update_window(handle, |_, w, cx| {
         w.click("close-automation-result", cx);
         w.render_frame(cx);
-        app.update(cx, |a, cx| a.request_new_research(w, cx));
+        app.update(cx, |a, cx| a.open_project_plan(1, w, cx));
         w.render_frame(cx);
         let before = app.read(cx).scope().clone();
         let destination = w.find("planning-destination");
@@ -1185,10 +1236,15 @@ fn size_theme_pass(
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, _| {
             for index in 0..30 {
-                let goal = a.store.create_research_goal_in_topic(
-                    format!("Research goal filler {index:02}"),
-                    "Scope".into(), 1, Some(fixture.topic),
-                ).unwrap();
+                let goal = a
+                    .store
+                    .create_research_goal_in_topic(
+                        format!("Research goal filler {index:02}"),
+                        "Scope".into(),
+                        1,
+                        Some(fixture.topic),
+                    )
+                    .unwrap();
                 let steps = a.store.apply_research_plan(goal, PLAN).unwrap();
                 for step in steps {
                     let mut run = a.store.prepare_run(step).unwrap();
@@ -1200,7 +1256,8 @@ fn size_theme_pass(
                 matching_goals.push(goal);
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
     // Goals-only collections: the step-count control navigates to the goal's
     // Steps instead of pretending to disclose inline children.
     // Project uses a topic directory and Topic uses goal cards, covered above;
@@ -1224,8 +1281,7 @@ fn size_theme_pass(
                     .update(cx, |s, cx| s.set_value("Research goal", w, cx));
             });
             w.render_frame(cx);
-            let control = format!("goal-steps-{}", fixture.goal);
-            // Force a non-zero source scroll before locating the row.
+            let control = format!("task-row-{}", fixture.goal);
             w.scroll(
                 "collection-table-scroll",
                 ScrollDelta::Pixels(point(px(0.), px(-160.))),
@@ -1234,38 +1290,38 @@ fn size_theme_pass(
             w.render_frame(cx);
             assert!(
                 scroll_into_view(w, cx, "collection-table-scroll", &control, -180.),
-                "{scope:?}: step-count control must be reachable"
+                "{scope:?}: goal row must be reachable"
             );
             assert!(
                 list_offset(app.read(cx)) < -10.0,
                 "{scope:?}: source list must start scrolled"
             );
-            assert!(!app.read(cx).query().is_empty(), "source query is meaningful");
             let before = (
                 app.read(cx).scope(),
                 app.read(cx).query(),
                 app.read(cx).all_status,
                 list_offset(app.read(cx)),
             );
-            let snapshot = w.find(control.clone());
-            assert!(snapshot.visible());
-            assert!(
-                snapshot.label().is_some_and(|label| label.contains("Open Steps")),
-                "step count exposes an explicit Open Steps name"
-            );
             w.click(control, cx);
             w.render_frame(cx);
-            assert_eq!(
-                app.read(cx).goal_steps_tab(),
-                Some(fixture.goal),
-                "{scope:?}: count opens the goal's Steps tab"
-            );
             assert_eq!(app.read(cx).selected(), Some(fixture.goal));
             w.click("navigation-back", cx);
             w.render_frame(cx);
-            assert_eq!(app.read(cx).scope(), before.0, "{scope:?}: Back restores scope");
-            assert_eq!(app.read(cx).query(), before.1, "{scope:?}: Back restores filter");
-            assert_eq!(app.read(cx).all_status, before.2, "{scope:?}: Back restores status filter");
+            assert_eq!(
+                app.read(cx).scope(),
+                before.0,
+                "{scope:?}: Back restores scope"
+            );
+            assert_eq!(
+                app.read(cx).query(),
+                before.1,
+                "{scope:?}: Back restores filter"
+            );
+            assert_eq!(
+                app.read(cx).all_status,
+                before.2,
+                "{scope:?}: Back restores status filter"
+            );
             assert_eq!(
                 list_offset(app.read(cx)),
                 before.3,
@@ -1273,10 +1329,15 @@ fn size_theme_pass(
             );
         })
         .unwrap();
-        screenshot(cx, handle, root, &format!("goal-count-{scope:?}-{width}x{height}-{theme:?}.png"));
+        screenshot(
+            cx,
+            handle,
+            root,
+            &format!("goal-count-{scope:?}-{width}x{height}-{theme:?}.png"),
+        );
     }
     // Dirty editor: Stay keeps the draft and does not change the route; Discard
-    // and Save replay the typed ResearchSteps destination, not Overview.
+    // and Save replay the typed goal detail destination.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
@@ -1288,40 +1349,45 @@ fn size_theme_pass(
             title.update(cx, |state, cx| state.set_value("dirty steps", w, cx));
         };
         app.update(cx, |a, cx| dirty(a, w, cx));
-        app.update(cx, |a, cx| a.request_goal_steps(fixture.goal, w, cx));
+        app.update(cx, |a, cx| a.open_task(fixture.goal, w, cx));
         w.render_frame(cx);
         assert!(w.try_find("dirty-exit-stay").is_some());
         w.click("dirty-exit-stay", cx);
         w.render_frame(cx);
-        assert_ne!(app.read(cx).goal_steps_tab(), Some(fixture.goal));
+        assert_ne!(app.read(cx).selected(), Some(fixture.goal));
         app.update(cx, |a, _| {
             a.draft = None;
-            a.property = None;
         });
 
         app.update(cx, |a, cx| dirty(a, w, cx));
-        app.update(cx, |a, cx| a.request_goal_steps(fixture.goal, w, cx));
+        app.update(cx, |a, cx| a.open_task(fixture.goal, w, cx));
         w.render_frame(cx);
         w.click("dirty-exit-discard", cx);
         w.render_frame(cx);
         assert_eq!(
-            app.read(cx).goal_steps_tab(),
+            app.read(cx).selected(),
             Some(fixture.goal),
-            "Discard replays the typed Steps destination"
+            "Discard replays the typed goal destination"
         );
         w.click("navigation-back", cx);
         w.render_frame(cx);
 
         app.update(cx, |a, cx| dirty(a, w, cx));
-        app.update(cx, |a, cx| a.request_goal_steps(fixture.goal, w, cx));
+        app.update(cx, |a, cx| a.open_task(fixture.goal, w, cx));
         w.render_frame(cx);
         w.click("dirty-exit-save", cx);
         w.render_frame(cx);
-        assert!(app.read(cx).draft.is_none(), "Save finishes the dirty editor: error={} impact={} primary={}", app.read(cx).error, app.read(cx).research_save_impact.is_some(), app.read(cx).live_primary.is_some());
+        assert!(
+            app.read(cx).draft.is_none(),
+            "Save finishes the dirty editor: error={} impact={} primary={}",
+            app.read(cx).error,
+            app.read(cx).research_save_impact.is_some(),
+            app.read(cx).live_primary.is_some()
+        );
         assert_eq!(
-            app.read(cx).goal_steps_tab(),
+            app.read(cx).selected(),
             Some(fixture.goal),
-            "Save replays the typed Steps destination"
+            "Save replays the typed goal destination"
         );
         w.click("navigation-back", cx);
         w.render_frame(cx);
@@ -1337,7 +1403,8 @@ fn size_theme_pass(
 }
 
 fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, root: &Path, name: &str) {
-    cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+    cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+        .unwrap();
     if let Ok(image) = cx.capture_screenshot(handle) {
         let _ = image.save(root.join(name));
     }

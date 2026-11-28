@@ -42,7 +42,6 @@ pub(crate) enum DataScope {
     All,
     Project(ProjectId),
     Topic(TopicId),
-    Cycle(String),
     Archive,
     Results,
     Paused,
@@ -57,14 +56,7 @@ pub(crate) enum ResearchScope {
     All,
     Project(ProjectId),
     Topic(TopicId),
-    Cycle(String),
     Archive,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TaskPanel {
-    Overview,
-    Steps,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,21 +133,22 @@ impl ResearchListPage {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ResearchTaskPage {
     task: TaskId,
-    panel: TaskPanel,
+    _panel: (),
     /// Page family the task was opened from. Kept private so the page remains a
     /// single identity while `scope()` still projects the structural base.
     base: Scope,
 }
 
 impl ResearchTaskPage {
-    pub(crate) fn new(task: TaskId, panel: TaskPanel, base: Scope) -> Self {
-        Self { task, panel, base }
+    pub(crate) fn new(task: TaskId, base: Scope) -> Self {
+        Self {
+            task,
+            _panel: (),
+            base,
+        }
     }
     pub(crate) fn task(&self) -> TaskId {
         self.task
-    }
-    pub(crate) fn panel(&self) -> TaskPanel {
-        self.panel
     }
     pub(crate) fn base(&self) -> &Scope {
         &self.base
@@ -287,23 +280,13 @@ impl Route {
         }
     }
     pub(crate) fn research_task(task: TaskId) -> Self {
-        Self::research_task_from(task, Scope::All, TaskPanel::Overview)
+        Self::ResearchTask(ResearchTaskPage::new(task, Scope::All))
     }
-    pub(crate) fn research_task_from(
-        task: TaskId,
-        base: Scope,
-        panel: TaskPanel,
-    ) -> Self {
-        Self::ResearchTask(ResearchTaskPage::new(task, panel, base))
-    }
-    pub(crate) fn research_task_steps(task: TaskId) -> Self {
-        Self::research_task_from(task, Scope::All, TaskPanel::Steps)
+    pub(crate) fn research_task_from(task: TaskId, base: Scope) -> Self {
+        Self::ResearchTask(ResearchTaskPage::new(task, base))
     }
     pub(crate) fn research_result(owner: ResultOwner, run: Option<RunId>) -> Self {
-        Self::ResearchResult(ResearchResultPage::new(
-            owner,
-            ResultSelection { run },
-        ))
+        Self::ResearchResult(ResearchResultPage::new(owner, ResultSelection { run }))
     }
     pub(crate) fn automation_detail(automation: AutomationId) -> Self {
         Self::AutomationDetail(AutomationDetailPage::new(automation))
@@ -323,14 +306,12 @@ impl Route {
                 ResearchScope::All => DataScope::All,
                 ResearchScope::Project(id) => DataScope::Project(*id),
                 ResearchScope::Topic(id) => DataScope::Topic(*id),
-                ResearchScope::Cycle(name) => DataScope::Cycle(name.clone()),
                 ResearchScope::Archive => DataScope::Archive,
             },
             Self::ResearchTask(page) => match page.base() {
                 Scope::All => DataScope::All,
                 Scope::Project(id) => DataScope::Project(*id),
                 Scope::Topic(id) => DataScope::Topic(*id),
-                Scope::Cycle(name) => DataScope::Cycle(name.clone()),
                 Scope::Archive => DataScope::Archive,
                 Scope::Runs => DataScope::Results,
                 Scope::Recovery => DataScope::Paused,
@@ -345,7 +326,9 @@ impl Route {
                     .task(task)
                     .map(|task| DataScope::Project(task.project_id))
                     .unwrap_or(DataScope::Results),
-                ResultOwner::OrdinaryPage | ResultOwner::PlanningProgress { .. } => DataScope::Results,
+                ResultOwner::OrdinaryPage | ResultOwner::PlanningProgress { .. } => {
+                    DataScope::Results
+                }
             },
             Self::PausedProjects => DataScope::Paused,
             Self::MarketResearch => DataScope::MarketResearch,
@@ -387,15 +370,12 @@ impl Route {
             Scope::All => Self::research_list(All, all_status),
             Scope::Project(id) => Self::research_list(Project(*id), all_status),
             Scope::Topic(id) => Self::research_list(Topic(*id), all_status),
-            Scope::Cycle(name) => Self::research_list(Cycle(name.clone()), all_status),
             Scope::Archive => Self::research_list(Archive, all_status),
             Scope::Runs => Self::research_result(ResultOwner::OrdinaryPage, None),
             Scope::Recovery => Self::PausedProjects,
             Scope::Research => Self::MarketResearch,
             Scope::Automations => Self::AutomationList,
-            Scope::AutomationRuns => {
-                Self::automation_results(results_filter, history_limit.max(1))
-            }
+            Scope::AutomationRuns => Self::automation_results(results_filter, history_limit.max(1)),
             Scope::Settings => Self::Settings(SettingsPage::new(SettingsSection::General)),
         }
     }
@@ -412,9 +392,9 @@ impl Route {
             Self::PausedProjects => Scope::Recovery,
             Self::MarketResearch => Scope::Research,
             Self::Settings(_) => Scope::Settings,
-            Self::AutomationList
-            | Self::AutomationDetail(_)
-            | Self::AutomationEditor(_) => Scope::Automations,
+            Self::AutomationList | Self::AutomationDetail(_) | Self::AutomationEditor(_) => {
+                Scope::Automations
+            }
             Self::AutomationResults(_) => Scope::AutomationRuns,
         }
     }
@@ -425,7 +405,6 @@ fn research_scope_legacy(scope: &ResearchScope) -> Scope {
         ResearchScope::All => Scope::All,
         ResearchScope::Project(id) => Scope::Project(*id),
         ResearchScope::Topic(id) => Scope::Topic(*id),
-        ResearchScope::Cycle(name) => Scope::Cycle(name.clone()),
         ResearchScope::Archive => Scope::Archive,
     }
 }
@@ -443,21 +422,44 @@ pub(crate) enum EditorTarget {
 pub(crate) enum Overlay {
     Search,
     PlanningComposer,
-    TaskEditor { task: TaskId },
-    AutomationSettings { automation: AutomationId },
+    TaskEditor {
+        task: TaskId,
+    },
+    AutomationSettings {
+        automation: AutomationId,
+    },
     AutomationPeriod {
         automation: AutomationId,
         occurrence: OccurrenceId,
     },
-    PlanningAttempt { run: RunId, from_settings: bool },
-    ResearchImpactReview { task: TaskId },
-    PreviousVersions { task: TaskId, run: Option<RunId> },
-    ProjectRename { project: ProjectId },
-    TopicEditor { project: ProjectId, topic: Option<TopicId> },
-    TopicMove { topic: TopicId },
-    FolderDialog { project: ProjectId },
+    PlanningAttempt {
+        run: RunId,
+        from_settings: bool,
+    },
+    ResearchImpactReview {
+        task: TaskId,
+    },
+    PreviousVersions {
+        task: TaskId,
+        run: Option<RunId>,
+    },
+    ProjectRename {
+        project: ProjectId,
+    },
+    TopicEditor {
+        project: ProjectId,
+        topic: Option<TopicId>,
+    },
+    TopicMove {
+        topic: TopicId,
+    },
+    FolderDialog {
+        project: ProjectId,
+    },
     NewProject,
-    DraftDecision { editor: EditorTarget },
+    DraftDecision {
+        editor: EditorTarget,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -534,7 +536,9 @@ impl Overlay {
 /// reconstructed later from a stale `scope`/`selected_run` combination.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PeriodBase {
-    Detail { automation: AutomationId },
+    Detail {
+        automation: AutomationId,
+    },
     Results {
         filter: Option<AutomationId>,
         history_limit: usize,
@@ -567,13 +571,19 @@ pub(crate) enum EnterMode {
 pub(crate) enum Destination {
     Route(Route),
     Overlay(Overlay),
-    TaskOutcome { task: TaskId, surface: TaskSurface },
+    TaskOutcome {
+        task: TaskId,
+        surface: TaskSurface,
+    },
     Period {
         base: PeriodBase,
         automation: AutomationId,
         occurrence: OccurrenceId,
     },
-    Recent { task: TaskId, surface: RecentSurface },
+    Recent {
+        task: TaskId,
+        surface: RecentSurface,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -717,10 +727,7 @@ pub(crate) enum ConfirmationStep {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum NavCommand {
-    Enter {
-        dest: Destination,
-        mode: EnterMode,
-    },
+    Enter { dest: Destination, mode: EnterMode },
     Back,
     CloseTop,
 }
@@ -798,7 +805,10 @@ impl NavState {
         &self.overlays
     }
     pub(crate) fn overlay(&self, kind: OverlayKind) -> Option<Overlay> {
-        self.overlays.iter().copied().find(|overlay| overlay.kind() == kind)
+        self.overlays
+            .iter()
+            .copied()
+            .find(|overlay| overlay.kind() == kind)
     }
     pub(crate) fn clear_overlays(&mut self) {
         self.overlays.clear();
@@ -993,7 +1003,11 @@ impl NavState {
             .find(|value| value.id == run)
             .ok_or_else(|| NavReject::missing("run", run))?;
         let mut candidate = self.clone();
-        match value.planning_owner.as_ref().and_then(|owner| owner.automation_id) {
+        match value
+            .planning_owner
+            .as_ref()
+            .and_then(|owner| owner.automation_id)
+        {
             None => {
                 // Legacy/ambiguous automation-project history is readable only
                 // from the Automations list, never over a concrete automation.
@@ -1031,21 +1045,13 @@ impl NavState {
         }
         candidate.remove_overlay(store, OverlayKind::AutomationSettings)?;
         candidate.remove_overlay(store, OverlayKind::AutomationPeriod)?;
-        candidate.push_overlay_internal(
-            store,
-            Overlay::PlanningAttempt { run, from_settings },
-        )?;
+        candidate.push_overlay_internal(store, Overlay::PlanningAttempt { run, from_settings })?;
         Ok(candidate)
     }
 
-    pub(crate) fn close_top(
-        &mut self,
-        store: &Store,
-    ) -> Result<NavEffect, NavReject> {        let mut candidate = self.clone();
-        let overlay = candidate
-            .overlays
-            .pop()
-            .ok_or(NavReject::NoDestination)?;
+    pub(crate) fn close_top(&mut self, store: &Store) -> Result<NavEffect, NavReject> {
+        let mut candidate = self.clone();
+        let overlay = candidate.overlays.pop().ok_or(NavReject::NoDestination)?;
         candidate.validate(store)?;
         *self = candidate;
         Ok(NavEffect::Closed { overlay })
@@ -1148,9 +1154,7 @@ impl NavState {
                                 *self = candidate;
                                 ConfirmationStep::Advanced(NavEffect::Closed { overlay })
                             }
-                            Err(reject) => {
-                                ConfirmationStep::Rejected(format!("{reject:?}"))
-                            }
+                            Err(reject) => ConfirmationStep::Rejected(format!("{reject:?}")),
                         };
                     }
                 } else {
@@ -1194,9 +1198,7 @@ impl NavState {
                 overlay.class(),
                 OverlayClass::Decision | OverlayClass::Impact
             ) || match (target, overlay) {
-                (EditorTarget::Task(task), Overlay::TaskEditor { task: editor }) => {
-                    task == editor
-                }
+                (EditorTarget::Task(task), Overlay::TaskEditor { task: editor }) => task == editor,
                 (EditorTarget::PlanningRequest, Overlay::PlanningComposer) => true,
                 _ => false,
             };
@@ -1242,25 +1244,12 @@ impl NavState {
         }
     }
 
-    pub(crate) fn set_task_panel(&mut self, panel: TaskPanel) -> Result<(), NavReject> {
-        match &mut self.route {
-            Route::ResearchTask(page) => {
-                page.panel = panel;
-                Ok(())
-            }
-            _ => Err(NavReject::InvalidRoute),
-        }
-    }
-
     pub(crate) fn select_run(&mut self, store: &Store, run: RunId) -> Result<(), NavReject> {
         let mut candidate = self.clone();
         let Route::ResearchResult(page) = &mut candidate.route else {
             return Err(NavReject::InvalidRoute);
         };
-        let next = ResearchResultPage::new(
-            page.owner,
-            ResultSelection { run: Some(run) },
-        );
+        let next = ResearchResultPage::new(page.owner, ResultSelection { run: Some(run) });
         validate_result_page(&next, store)?;
         candidate.route = Route::ResearchResult(next);
         candidate.validate(store)?;
@@ -1309,7 +1298,9 @@ fn route_for_task_surface(
     task: TaskId,
     surface: TaskSurface,
 ) -> Result<Route, NavReject> {
-    let definition = store.task(task).ok_or_else(|| NavReject::missing("task", task))?;
+    let definition = store
+        .task(task)
+        .ok_or_else(|| NavReject::missing("task", task))?;
     match surface {
         TaskSurface::Detail => Ok(Route::research_task(task)),
         TaskSurface::Result { run } => {
@@ -1344,13 +1335,16 @@ fn route_for_recent(
 }
 
 fn result_owner_for_task(store: &Store, task: TaskId) -> Result<ResultOwner, NavReject> {
-    let value = store.task(task).ok_or_else(|| NavReject::missing("task", task))?;
+    let value = store
+        .task(task)
+        .ok_or_else(|| NavReject::missing("task", task))?;
     if let Some(automation) = value.automation_id {
-        let (_, occurrence) = store
-            .automation_period_for_task(task)
-            .ok_or(NavReject::InvalidOwnership {
-                reason: "automation step has no period",
-            })?;
+        let (_, occurrence) =
+            store
+                .automation_period_for_task(task)
+                .ok_or(NavReject::InvalidOwnership {
+                    reason: "automation step has no period",
+                })?;
         Ok(ResultOwner::AutomationTask {
             automation,
             occurrence,
@@ -1466,7 +1460,9 @@ fn validate_result_owner(owner: ResultOwner, store: &Store) -> Result<(), NavRej
     match owner {
         ResultOwner::OrdinaryPage => Ok(()),
         ResultOwner::Task(task) => {
-            let value = store.task(task).ok_or_else(|| NavReject::missing("task", task))?;
+            let value = store
+                .task(task)
+                .ok_or_else(|| NavReject::missing("task", task))?;
             if value.automation_id.is_some() {
                 Err(NavReject::InvalidOwnership {
                     reason: "an automation task needs an explicit period owner",
@@ -1476,7 +1472,9 @@ fn validate_result_owner(owner: ResultOwner, store: &Store) -> Result<(), NavRej
             }
         }
         ResultOwner::Goal { goal } => {
-            let value = store.task(goal).ok_or_else(|| NavReject::missing("task", goal))?;
+            let value = store
+                .task(goal)
+                .ok_or_else(|| NavReject::missing("task", goal))?;
             if value.automation_id.is_some() {
                 Err(NavReject::InvalidOwnership {
                     reason: "an automation task needs an explicit period owner",
@@ -1501,7 +1499,9 @@ fn validate_result_owner(owner: ResultOwner, store: &Store) -> Result<(), NavRej
                     reason: "period does not belong to automation",
                 });
             }
-            let task_value = store.task(task).ok_or_else(|| NavReject::missing("task", task))?;
+            let task_value = store
+                .task(task)
+                .ok_or_else(|| NavReject::missing("task", task))?;
             if task_value.automation_id != Some(automation) {
                 return Err(NavReject::InvalidOwnership {
                     reason: "task is not owned by the automation",
@@ -1606,11 +1606,7 @@ fn validate_result_run(owner: ResultOwner, run: RunId, store: &Store) -> Result<
                     reason: "automation planning is T23-owned history",
                 });
             }
-            if store
-                .request_for_run(value.id)
-                .map(|value| value.id)
-                != Some(request)
-            {
+            if store.request_for_run(value.id).map(|value| value.id) != Some(request) {
                 return Err(NavReject::InvalidOwnership {
                     reason: "run is not the named request planning attempt",
                 });
@@ -1815,7 +1811,11 @@ fn validate_overlay_base(base: &Route, overlay: Overlay) -> Result<(), NavReject
     }
 }
 
-fn validate_overlay_owners(base: &Route, overlays: &[Overlay], store: &Store) -> Result<(), NavReject> {
+fn validate_overlay_owners(
+    base: &Route,
+    overlays: &[Overlay],
+    store: &Store,
+) -> Result<(), NavReject> {
     for overlay in overlays {
         match overlay {
             Overlay::TaskEditor { task } | Overlay::ResearchImpactReview { task } => {
@@ -1850,7 +1850,11 @@ fn validate_overlay_owners(base: &Route, overlays: &[Overlay], store: &Store) ->
                     .iter()
                     .find(|value| value.id == *run)
                     .ok_or_else(|| NavReject::missing("run", *run))?;
-                match value.planning_owner.as_ref().and_then(|owner| owner.automation_id) {
+                match value
+                    .planning_owner
+                    .as_ref()
+                    .and_then(|owner| owner.automation_id)
+                {
                     None => {
                         let legacy = store
                             .unassigned_legacy_planning_runs()
@@ -1940,11 +1944,8 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
     match route {
         Route::ResearchList(page) => match page.scope() {
             ResearchScope::All => None,
-            ResearchScope::Project(_) | ResearchScope::Cycle(_) | ResearchScope::Archive => {
-                Some(Route::research_list(
-                    ResearchScope::All,
-                    AllStatus::All,
-                ))
+            ResearchScope::Project(_) | ResearchScope::Archive => {
+                Some(Route::research_list(ResearchScope::All, AllStatus::All))
             }
             ResearchScope::Topic(topic) => store
                 .topics()
@@ -1957,17 +1958,9 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
                         .find(|project| project.id == value.project_id)
                 })
                 .map(|project| {
-                    Route::research_list(
-                        ResearchScope::Project(project.id),
-                        AllStatus::All,
-                    )
+                    Route::research_list(ResearchScope::Project(project.id), AllStatus::All)
                 })
-                .or_else(|| {
-                    Some(Route::research_list(
-                        ResearchScope::All,
-                        AllStatus::All,
-                    ))
-                }),
+                .or_else(|| Some(Route::research_list(ResearchScope::All, AllStatus::All))),
         },
         Route::ResearchTask(page) => {
             let task = store.task(page.task())?;
@@ -1982,16 +1975,17 @@ fn structural_parent(route: &Route, store: &Store) -> Option<Route> {
                     AllStatus::All,
                 ));
             }
-            if store.projects().iter().any(|project| project.id == task.project_id) {
+            if store
+                .projects()
+                .iter()
+                .any(|project| project.id == task.project_id)
+            {
                 return Some(Route::research_list(
                     ResearchScope::Project(task.project_id),
                     AllStatus::All,
                 ));
             }
-            Some(Route::research_list(
-                ResearchScope::All,
-                AllStatus::All,
-            ))
+            Some(Route::research_list(ResearchScope::All, AllStatus::All))
         }
         Route::ResearchResult(page) => match page.owner() {
             ResultOwner::Task(task)
@@ -2027,12 +2021,10 @@ fn validate_frame(mut frame: ReturnFrame, store: &Store) -> Restored {
     if validate_route(&frame.route, store).is_err() {
         let fallback = match &frame.route {
             Route::ResearchList(ResearchListPage {
-                scope: ResearchScope::Project(_) | ResearchScope::Topic(_) | ResearchScope::Cycle(_),
+                scope: ResearchScope::Project(_) | ResearchScope::Topic(_),
                 ..
             }) => Route::research_list(ResearchScope::All, AllStatus::All),
-            Route::ResearchTask(_) => {
-                Route::research_list(ResearchScope::All, AllStatus::All)
-            }
+            Route::ResearchTask(_) => Route::research_list(ResearchScope::All, AllStatus::All),
             Route::ResearchResult(page) => match page.owner() {
                 ResultOwner::Task(_)
                 | ResultOwner::Goal { .. }
@@ -2060,7 +2052,8 @@ fn validate_frame(mut frame: ReturnFrame, store: &Store) -> Restored {
             && validate_result_run(page.owner(), run, store).is_err()
         {
             page.selection = ResultSelection::empty();
-            notice = Some("That result is no longer available. Returned to Research results.".into());
+            notice =
+                Some("That result is no longer available. Returned to Research results.".into());
         }
     }
 
@@ -2085,7 +2078,8 @@ mod tests {
 
     fn base_store() -> Store {
         let mut store = Store::empty();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.set_default_model("test/model".into());
         store.research_config_mut().models =
             ["test/plan", "test/collect", "test/analyze", "test/advise"].map(String::from);
@@ -2096,7 +2090,7 @@ mod tests {
 
     fn task(store: &mut Store, title: &str) -> TaskId {
         store
-            .create_task(title, 1, Stage::Planned, None)
+            .create_task(title, 1, Stage::InProgress, None)
             .expect("task")
     }
 
@@ -2261,7 +2255,9 @@ mod tests {
             )
             .unwrap();
         assert_eq!(state.returns().len(), 1);
-        state.push_overlay(&store, Overlay::TaskEditor { task }).unwrap();
+        state
+            .push_overlay(&store, Overlay::TaskEditor { task })
+            .unwrap();
         assert_eq!(state.overlays().len(), 1);
         state
             .enter(
@@ -2295,7 +2291,10 @@ mod tests {
         match state.back(&store).unwrap() {
             NavEffect::Back { restored } => {
                 assert!(matches!(restored.frame.route, Route::ResearchList(_)));
-                assert_eq!(restored.frame.scroll.get(ScrollKey::TaskList), Some((0.0, 120.0)));
+                assert_eq!(
+                    restored.frame.scroll.get(ScrollKey::TaskList),
+                    Some((0.0, 120.0))
+                );
             }
             other => panic!("expected Back, got {other:?}"),
         }
@@ -2372,7 +2371,8 @@ mod tests {
         let task_b = task(&mut store, "B");
         let run_a = run(&mut store, task_a, "Succeeded", "A report");
         let run_b = run(&mut store, task_b, "Succeeded", "B report");
-        let mut state = NavState::new(&store, result_route(ResultOwner::Task(task_a), Some(run_a))).unwrap();
+        let mut state =
+            NavState::new(&store, result_route(ResultOwner::Task(task_a), Some(run_a))).unwrap();
         let before = state.clone();
         let err = state
             .enter(
@@ -2413,7 +2413,13 @@ mod tests {
         let occurrence = period(&mut store, automation, 1_000);
         let steps = store.automation_period_steps(occurrence);
         let task = steps[0];
-        let run = push_run(&mut store, task, Some(occurrence), "Succeeded", "period report");
+        let run = push_run(
+            &mut store,
+            task,
+            Some(occurrence),
+            "Succeeded",
+            "period report",
+        );
         let owner = ResultOwner::AutomationTask {
             automation,
             occurrence,
@@ -2437,7 +2443,10 @@ mod tests {
             task,
         };
         let mut other_owner = wrong;
-        if let ResultOwner::AutomationTask { task: wrong_task, .. } = &mut other_owner {
+        if let ResultOwner::AutomationTask {
+            task: wrong_task, ..
+        } = &mut other_owner
+        {
             *wrong_task = steps[1];
         }
         let err = state
@@ -2513,7 +2522,9 @@ mod tests {
         let mut store = base_store();
         let task = task(&mut store, "Task");
         let mut state = NavState::new(&store, Route::research_task(task)).unwrap();
-        state.push_overlay(&store, Overlay::TaskEditor { task }).unwrap();
+        state
+            .push_overlay(&store, Overlay::TaskEditor { task })
+            .unwrap();
         state.push_overlay(&store, Overlay::Search).unwrap();
         match state.close_top(&store).unwrap() {
             NavEffect::Closed { overlay } => assert_eq!(overlay, Overlay::Search),
@@ -2534,7 +2545,9 @@ mod tests {
         let task = task(&mut store, "Task");
         let run = run(&mut store, task, "Succeeded", "report");
         let mut state = NavState::new(&store, Route::research_task(task)).unwrap();
-        state.push_overlay(&store, Overlay::TaskEditor { task }).unwrap();
+        state
+            .push_overlay(&store, Overlay::TaskEditor { task })
+            .unwrap();
         state
             .push_overlay(
                 &store,
@@ -2554,7 +2567,10 @@ mod tests {
             scroll(0.0),
         );
         assert_eq!(step, ConfirmationStep::Pending(PendingKind::Durability));
-        assert_eq!(state, before, "durability pending is not Saved and must not navigate");
+        assert_eq!(
+            state, before,
+            "durability pending is not Saved and must not navigate"
+        );
 
         let step = state.apply_confirmation(
             Confirmation::Pending(PendingKind::ImpactReview { task }),
@@ -2720,7 +2736,10 @@ mod tests {
             .push_overlay(&store, Overlay::ResearchImpactReview { task: task_b })
             .unwrap_err();
         assert_eq!(err, NavReject::InvalidStack);
-        assert_eq!(state, before, "mismatched impact owner must not mutate state");
+        assert_eq!(
+            state, before,
+            "mismatched impact owner must not mutate state"
+        );
 
         // With an intervening decision, both owners must still match.
         state
@@ -2777,11 +2796,10 @@ mod tests {
     fn results_filter_mutation_validates_owner_and_limit_atomically() {
         let mut store = base_store();
         let automation = automation(&mut store, "Filter owner");
-        let mut state = NavState::new(&store, Route::automation_results(Some(automation), 20)).unwrap();
+        let mut state =
+            NavState::new(&store, Route::automation_results(Some(automation), 20)).unwrap();
         let before = state.clone();
-        let err = state
-            .set_results_filter(&store, Some(404), 20)
-            .unwrap_err();
+        let err = state.set_results_filter(&store, Some(404), 20).unwrap_err();
         assert!(matches!(err, NavReject::MissingOwner { .. }));
         assert_eq!(state, before);
 
@@ -2865,10 +2883,7 @@ mod tests {
             )
             .unwrap();
         state
-            .push_overlay(
-                &store,
-                Overlay::ResearchImpactReview { task: task_a },
-            )
+            .push_overlay(&store, Overlay::ResearchImpactReview { task: task_a })
             .unwrap();
         let before = state.clone();
         let step = state.apply_confirmation(
@@ -3038,11 +3053,7 @@ mod tests {
             ("search", Overlay::Search),
             ("previous", Overlay::PreviousVersions { task, run: None }),
         ];
-        fn sequences(
-            prefix: &mut Vec<usize>,
-            used: &mut [bool; 5],
-            out: &mut Vec<Vec<usize>>,
-        ) {
+        fn sequences(prefix: &mut Vec<usize>, used: &mut [bool; 5], out: &mut Vec<Vec<usize>>) {
             out.push(prefix.clone());
             if prefix.len() == 4 {
                 return;
@@ -3062,10 +3073,8 @@ mod tests {
         sequences(&mut Vec::new(), &mut [false; 5], &mut all);
         let mut observed = std::collections::BTreeSet::new();
         for sequence in all {
-            let overlays: Vec<Overlay> = sequence
-                .iter()
-                .map(|index| candidates[*index].1)
-                .collect();
+            let overlays: Vec<Overlay> =
+                sequence.iter().map(|index| candidates[*index].1).collect();
             if validate_overlay_stack(&base, &overlays).is_ok() {
                 observed.insert(
                     sequence
@@ -3154,8 +3163,13 @@ mod tests {
         let mut store = base_store();
         let task = task(&mut store, "Task");
         let mut state = NavState::new(&store, Route::research_task(task)).unwrap();
-        state.push_overlay(&store, Overlay::TaskEditor { task }).unwrap();
-        assert_eq!(state.back_availability(&store), BackAvailability::BlockedByOverlay);
+        state
+            .push_overlay(&store, Overlay::TaskEditor { task })
+            .unwrap();
+        assert_eq!(
+            state.back_availability(&store),
+            BackAvailability::BlockedByOverlay
+        );
         assert_eq!(state.back(&store).unwrap_err(), NavReject::BlockedByOverlay);
     }
 
@@ -3176,10 +3190,7 @@ mod tests {
         assert_eq!(stack.len(), 1, "consecutive duplicates collapse");
         for index in 0..(MAX_RETURN_DEPTH + 3) {
             stack.record(ReturnFrame {
-                route: Route::research_list(
-                    ResearchScope::Cycle(format!("cycle-{index}")),
-                    AllStatus::All,
-                ),
+                route: Route::research_list(ResearchScope::Topic(index as u64 + 1), AllStatus::All),
                 overlays: vec![],
                 scroll: ScrollBookmark::default(),
                 result_fallback: None,
@@ -3190,7 +3201,7 @@ mod tests {
         assert_eq!(
             stack.last().map(|frame| frame.route.clone()),
             Some(Route::research_list(
-                ResearchScope::Cycle(format!("cycle-{}", MAX_RETURN_DEPTH + 2)),
+                ResearchScope::Topic(MAX_RETURN_DEPTH as u64 + 3),
                 AllStatus::All,
             )),
             "the bound retains the newest frames in order"
@@ -3243,11 +3254,6 @@ mod tests {
                 "S2 projection must preserve the page family"
             );
         }
-        let cycle = Scope::Cycle("Q4".into());
-        assert_eq!(
-            Route::for_scope(&cycle, AllStatus::Open, None, 20).legacy_scope(),
-            cycle
-        );
     }
 
     #[test]
@@ -3268,13 +3274,18 @@ mod tests {
         let store = base_store();
         let mut state = NavState::new(&store, list_route()).unwrap();
         let before = state.clone();
-        assert!(state
-            .replace_route(
-                &store,
-                Route::research_list(ResearchScope::Project(999), AllStatus::All),
-            )
-            .is_err());
-        assert_eq!(state, before, "a rejected route leaves the whole state unchanged");
+        assert!(
+            state
+                .replace_route(
+                    &store,
+                    Route::research_list(ResearchScope::Project(999), AllStatus::All),
+                )
+                .is_err()
+        );
+        assert_eq!(
+            state, before,
+            "a rejected route leaves the whole state unchanged"
+        );
 
         state
             .replace_route(
@@ -3290,12 +3301,11 @@ mod tests {
 
     #[test]
     fn research_task_page_accessors_return_their_fields() {
-        let page = ResearchTaskPage::new(7, TaskPanel::Steps, Scope::Topic(2));
+        let page = ResearchTaskPage::new(7, Scope::Topic(2));
         assert_eq!(page.task(), 7);
-        assert_eq!(page.panel(), TaskPanel::Steps);
         assert_eq!(page.base(), &Scope::Topic(2));
-        let list = ResearchListPage::new(ResearchScope::All, AllStatus::Open)
-            .with_query("supply".into());
+        let list =
+            ResearchListPage::new(ResearchScope::All, AllStatus::Open).with_query("supply".into());
         assert_eq!(list.query(), "supply");
         assert_eq!(list.all_status(), AllStatus::Open);
     }
@@ -3323,7 +3333,11 @@ mod tests {
         let before = state.clone();
 
         for rejected in [999_999, foreign_run, ordinary_run] {
-            assert!(state.with_planning_attempt(&store, rejected, false).is_err());
+            assert!(
+                state
+                    .with_planning_attempt(&store, rejected, false)
+                    .is_err()
+            );
             assert_eq!(
                 state, before,
                 "a stale/foreign/ordinary run leaves route, overlay and draft context unchanged"

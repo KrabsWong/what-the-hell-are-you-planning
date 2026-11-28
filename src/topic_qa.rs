@@ -81,7 +81,6 @@ pub fn run() {
             });
             app.update(cx, |a, cx| {
                 a.open_task(goal, w, cx);
-                a.show_task_details = true;
                 cx.notify();
             });
             w.render_frame(cx);
@@ -90,7 +89,7 @@ pub fn run() {
             assert_eq!(app.read(cx).store.task(goal).unwrap().topic_id, Some(id));
             app.update(cx, |a, cx| {
                 a.store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect results","instructions":"Collect primary filings","kind":"collect","depends_on":[]},{"title":"Analyze fundamentals","instructions":"Analyze results","kind":"analyze","depends_on":[0]},{"title":"Research report","instructions":"Summarize findings","kind":"advise","depends_on":[1]}]}"#).unwrap();
-                let child = a.store.create_task("Follow-up verification", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
+                let child = a.store.create_task("Follow-up verification", 1, crate::domain::Stage::InProgress, Some(goal)).unwrap();
                 assert_eq!(a.store.task_topic(child).unwrap().id, id);
                 a.change_stage(child, crate::domain::Stage::Done, cx);
                 assert_eq!(a.store.task(child).unwrap().stage, crate::domain::Stage::Done, "Ordinary subtasks retain manual completion");
@@ -134,43 +133,12 @@ pub fn run() {
         w.render_frame(cx);
     })
     .unwrap();
-    cx.update_window(handle, |_, w, cx| {
-        w.click("goal-steps-tab", cx);
-        w.render_frame(cx);
-        assert!(w.try_find("goal-steps-list").is_some());
-        let child = app.read(cx).store.research_children(goal)[0];
-        let before = app.read(cx).store.runs().len();
-        w.click(format!("goal-step-{child}"), cx);
-        assert_eq!(app.read(cx).selected(), Some(child));
-        w.render_frame(cx);
-        w.click("navigation-back", cx);
-        w.render_frame(cx);
-        assert!(w.try_find("goal-steps-list").is_some());
-        app.update(cx, |a, cx| {
-            a.navigate(Scope::All, w, cx);
-        });
-        w.render_frame(cx);
-        w.click(format!("goal-steps-{goal}"), cx);
-        w.render_frame(cx);
-        assert_eq!(app.read(cx).selected(), Some(goal));
-        assert!(w.try_find("goal-steps-list").is_some());
-        assert_eq!(
-            app.read(cx).store.runs().len(),
-            before,
-            "Viewing steps never executes work"
-        );
-    })
-    .unwrap();
-    cx.capture_screenshot(handle)
-        .unwrap()
-        .save(root.join("goal-steps-list.png"))
-        .unwrap();
     // Isolated display fixtures, no scheduler or external processes are started.
     let mut fixture = cx.update(|cx| app.read(cx).store.clone());
     fixture.set_default_model("fixture/model".into());
     fixture.project_at_mut(0).unwrap().directory = root.to_string_lossy().into_owned();
     fixture
-        .set_stage(goal, crate::domain::Stage::Planned)
+        .set_stage(goal, crate::domain::Stage::InProgress)
         .unwrap();
     let children = fixture.research_children(goal);
     let mut running = fixture.prepare_run(children[0]).unwrap();
@@ -187,21 +155,24 @@ pub fn run() {
         .create_task(
             "Waiting for manual material",
             1,
-            crate::domain::Stage::Planned,
+            crate::domain::Stage::InProgress,
             Some(goal),
         )
         .unwrap();
     let completed = children[0];
     let approval = fixture.goal_plan_signature(goal);
     fixture.task_mut(goal).unwrap().approved_plan = approval;
-    fixture.task_mut(goal).unwrap().stage = crate::domain::Stage::Planned;
+    fixture.task_mut(goal).unwrap().stage = crate::domain::Stage::InProgress;
     let mut result = fixture.prepare_run(completed).unwrap();
     result.id = 3;
     result.status = "Succeeded".into();
     result.output = "# Completed research summary".into();
     fixture.push_run(result);
     fixture.task_mut(completed).unwrap().stage = crate::domain::Stage::Done;
-    assert_eq!(fixture.task_status(completed, None).execution, crate::execution_status::ExecutionStatus::Done);
+    assert_eq!(
+        fixture.task_status(completed, None).execution,
+        crate::execution_status::ExecutionStatus::Done
+    );
     steps_screenshot(
         &fixture,
         goal,
@@ -223,19 +194,14 @@ pub fn run() {
         false,
         &root.join("steps-list-narrow.png"),
     );
-    cx.update_window(handle, |_, w, cx| {
-        w.click("goal-overview-tab", cx);
-        w.render_frame(cx);
-    })
-    .unwrap();
     cx.capture_screenshot(handle)
         .unwrap()
         .save(root.join("topic-property.png"))
         .unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            a.show_task_details = true;
-            a.store.set_default_model("tencent-token-plan/deepseek/deepseek-flash".into());
+            a.store
+                .set_default_model("tencent-token-plan/deepseek/deepseek-flash".into());
             a.detail_scroll.set_offset(point(px(0.), px(-560.)));
             cx.notify();
         });
@@ -286,7 +252,10 @@ pub fn run() {
         w.render_frame(cx);
         w.click("topic-actions-menu", cx);
         w.render_frame(cx);
-        assert_eq!(w.within("popup-menu").find(3usize).label(), Some("Archive topic"));
+        assert_eq!(
+            w.within("popup-menu").find(3usize).label(),
+            Some("Archive topic")
+        );
         w.within("popup-menu").click(3usize, cx); // Archive topic
         assert!(
             app.read(cx)
@@ -315,7 +284,10 @@ pub fn run() {
         w.render_frame(cx);
         w.click("topic-actions-menu", cx);
         w.render_frame(cx);
-        assert_eq!(w.within("popup-menu").find(3usize).label(), Some("Restore topic"));
+        assert_eq!(
+            w.within("popup-menu").find(3usize).label(),
+            Some("Restore topic")
+        );
         w.within("popup-menu").click(3usize, cx); // Restore topic
         assert!(
             !app.read(cx)
@@ -327,23 +299,27 @@ pub fn run() {
                 .archived
         );
         w.render_frame(cx);
-        w.click("topic-new-goal", cx);
-        assert_eq!(app.read(cx).planning_topic, Some(topic));
         app.update(cx, |a, cx| {
-            a.project_brief
-                .update(cx, |s, cx| s.set_value("Next-quarter earnings, check results", w, cx));
-        });
-        w.render_frame(cx);
-        w.click("save-project-context", cx);
-        assert_eq!(
-            app.read(cx)
+            let source = a
                 .store
-                .research_requests()
-                .last()
+                .topics()
+                .iter()
+                .find(|value| value.id == topic)
                 .unwrap()
-                .topic_id,
-            Some(topic)
-        );
+                .clone();
+            let mut copy = source.clone();
+            let copy_id = a.store.topics().iter().map(|value| value.id).max().unwrap() + 1;
+            copy.id = copy_id;
+            copy.replanned_from = Some(topic);
+            a.store.push_topic(copy);
+            a.store
+                .create_research_request(
+                    source.project_id,
+                    Some(copy_id),
+                    String::from("Next-quarter earnings, check results"),
+                )
+                .unwrap();
+        });
         app.update(cx, |a, cx| {
             a.persist_if_changed(true);
             assert!(a.storage_error.is_empty());
@@ -378,13 +354,7 @@ pub fn run() {
     println!("Topic QA passed; screenshots: {}", root.display());
 }
 
-fn steps_screenshot(
-    store: &Store,
-    goal: u64,
-    width: f32,
-    dark: bool,
-    path: &std::path::Path,
-) {
+fn steps_screenshot(store: &Store, goal: u64, width: f32, dark: bool, path: &std::path::Path) {
     let mut cx = HeadlessAppContext::with_platform(
         platform::current_platform(true).text_system(),
         Arc::new(crate::ui_assets::AppAssets),
@@ -399,7 +369,7 @@ fn steps_screenshot(
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
                 a.store = store.clone();
-                a.open_goal_steps(goal, w, cx);
+                a.open_task(goal, w, cx);
                 crate::appearance::apply(
                     if dark {
                         crate::appearance::Appearance::Dark
@@ -421,36 +391,12 @@ fn steps_screenshot(
             .unwrap();
     }
     let app = app.unwrap();
-    for step in store.research_children(goal) {
-        cx.update_window(handle, |_, w, cx| {
-            app.update(cx, |a, cx| {
-                a.store.run_at_mut(0).unwrap().task_id = step;
-                a.store.run_at_mut(0).unwrap().status = "Running".into();
-                a.open_task(step, w, cx);
-            });
-            w.render_frame(cx);
-            w.click("task-progress", cx);
-            assert_eq!(app.read(cx).selected(), Some(goal));
-            assert_eq!(app.read(cx).goal_steps_tab(), Some(goal));
-            w.render_frame(cx);
-            assert!(w.try_find("goal-steps-list").is_some());
-        }).unwrap();
-    }
-    app.update(&mut cx, |a, cx| { a.store = store.clone(); cx.notify(); });
-    cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
-    cx.update_window(handle, |_, w, _| {
-        for id in store.research_children(goal) {
-            let status = store.task_status(id, None);
-            if status.execution == crate::execution_status::ExecutionStatus::Done
-                && status.display_label.is_none()
-            {
-                assert!(
-                    w.try_find(format!("goal-step-status-{id}")).is_none(),
-                    "Completed step rows must not repeat the check icon as a status label"
-                );
-            }
-        }
-    }).unwrap();
+    app.update(&mut cx, |a, cx| {
+        a.store = store.clone();
+        cx.notify();
+    });
+    cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+        .unwrap();
     cx.capture_screenshot(handle).unwrap().save(path).unwrap();
 }
 
@@ -459,9 +405,14 @@ pub fn sidebar() {
     let root = std::env::temp_dir().join(format!("planning-sidebar-qa-{}", std::process::id()));
     let mut store = Store::mock();
     let topic = store.create_topic(1, "Startup topic").unwrap();
-    let goal = store.create_research_goal_in_topic(
-        "Startup goal".into(), "Check navigation".into(), 1, Some(topic),
-    ).unwrap();
+    let goal = store
+        .create_research_goal_in_topic(
+            "Startup goal".into(),
+            "Check navigation".into(),
+            1,
+            Some(topic),
+        )
+        .unwrap();
     let path = root.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
@@ -471,15 +422,17 @@ pub fn sidebar() {
     );
     cx.update(|cx| init(cx));
     let mut app = None;
-    let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
-        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| {
-            a.attach_storage(Storage::new(path.clone()), w, cx);
-            assert!(a.expanded_sidebar_projects.is_empty());
-        });
-        app = Some(view.clone());
-        cx.new(|cx| base::Root::new(view, w, cx))
-    }).unwrap();
+    let window = cx
+        .open_window(size(px(1000.), px(720.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_storage(Storage::new(path.clone()), w, cx);
+                assert!(a.expanded_sidebar_projects.is_empty());
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
     let app = app.unwrap();
     let handle = window.into();
     // Navigation survives a storage reload, while expansion is reset to one project.
@@ -503,7 +456,12 @@ pub fn sidebar() {
             reopened.save(&loaded).unwrap();
             a.attach_storage(reopened, w, cx);
             assert_eq!(a.expanded_sidebar_projects, vec![1]);
-            assert!(a.store.topics().iter().all(|t| a.collapsed_sidebar_topics.contains(&t.id)));
+            assert!(
+                a.store
+                    .topics()
+                    .iter()
+                    .all(|t| a.collapsed_sidebar_topics.contains(&t.id))
+            );
             assert!(a.collapsed_sidebar_goals.contains(&goal));
             a.open_task(goal, w, cx);
             assert!(!a.collapsed_sidebar_topics.contains(&topic));
@@ -516,7 +474,8 @@ pub fn sidebar() {
             a.open_task(goal, w, cx);
             assert_eq!(a.store.last_active_project(), Some(1));
         });
-    }).unwrap();
+    })
+    .unwrap();
     println!("Sidebar startup QA passed");
     drop(cx);
     // T07: exercise real period-scoped neighbor controls while this existing
@@ -529,32 +488,56 @@ pub fn run_migration() {
     let root = std::env::temp_dir().join(format!("planning-migration-qa-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let mut store = Store::empty();
-    let goal = store.create_task("Semiconductor research", 1, crate::domain::Stage::Planned, None).unwrap();
-    store.create_task("Review earnings sources", 1, crate::domain::Stage::Planned, Some(goal)).unwrap();
+    let goal = store
+        .create_task(
+            "Semiconductor research",
+            1,
+            crate::domain::Stage::InProgress,
+            None,
+        )
+        .unwrap();
+    store
+        .create_task(
+            "Review earnings sources",
+            1,
+            crate::domain::Stage::InProgress,
+            Some(goal),
+        )
+        .unwrap();
     let topic = store.task_topic(goal).unwrap().id;
     // The rename flow now commits through the durable scoped command path, so
     // the fixture must provide a real workspace instead of an in-memory store.
     let workspace = root.join("workspace.sqlite3");
     Storage::new(workspace.clone()).save(&store).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
-        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
-    cx.update(|cx| { init(cx); Theme::change(ThemeMode::Light, None, cx); });
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
+    cx.update(|cx| {
+        init(cx);
+        Theme::change(ThemeMode::Light, None, cx);
+    });
     let mut app = None;
-    let window = cx.open_window(size(px(1440.), px(900.)), |w, cx| {
-        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| {
-            a.attach_storage(Storage::new(workspace.clone()), w, cx);
-            a.navigate(Scope::Topic(topic), w, cx);
-        });
-        app = Some(view.clone());
-        cx.new(|cx| base::Root::new(view, w, cx))
-    }).unwrap();
+    let window = cx
+        .open_window(size(px(1440.), px(900.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.attach_storage(Storage::new(workspace.clone()), w, cx);
+                a.navigate(Scope::Topic(topic), w, cx);
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
     let app = app.unwrap();
     let handle = window.into();
     // Rename uses the same application modal surface and never mutates on cancel/error.
     cx.update_window(handle, |_, w, cx| {
         let before = app.read(cx).store.clone();
-        app.update(cx, |a, cx| { a.navigate(Scope::Project(1), w, cx); });
+        app.update(cx, |a, cx| {
+            a.navigate(Scope::Project(1), w, cx);
+        });
         w.render_frame(cx);
         w.click("project-actions", cx);
         w.render_frame(cx);
@@ -578,46 +561,69 @@ pub fn run_migration() {
             input.update(cx, |s, cx| s.set_value("Renamed research project", w, cx));
         });
         w.render_frame(cx);
-    }).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(root.join("project-rename.png")).unwrap();
+    })
+    .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("project-rename.png"))
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("save-project-rename", cx);
         assert!(app.read(cx).project_rename.is_none());
-        assert_eq!(app.read(cx).store.projects()[0].name, "Renamed research project");
+        assert_eq!(
+            app.read(cx).store.projects()[0].name,
+            "Renamed research project"
+        );
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
-    }).unwrap();
+    })
+    .unwrap();
     // Exercise the in-app migration modal with enough projects to require search.
-    let before_move = cx.update_window(handle, |_, w, cx| {
-        let before = app.read(cx).store.clone();
-        app.update(cx, |a, cx| {
-            for id in 100..200 {
-                a.store.push_project(crate::domain::Project {
-                    id, name: format!("Destination {id}"), key: format!("P{id}"),
-                    directory: String::new(), research_brief: String::new(),
-                    kind: crate::domain::ProjectKind::User,
-                });
-            }
-            a.request_topic_move(topic, w, cx);
-        });
-        w.render_frame(cx);
-        assert!(app.read(cx).topic_move.is_some());
-        assert!(!w.has_active_prompt());
-        before
-    }).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(root.join("topic-move-dialog.png")).unwrap();
+    let before_move = cx
+        .update_window(handle, |_, w, cx| {
+            let before = app.read(cx).store.clone();
+            app.update(cx, |a, cx| {
+                for id in 100..200 {
+                    a.store.push_project(crate::domain::Project {
+                        id,
+                        name: format!("Destination {id}"),
+                        key: format!("P{id}"),
+                        directory: String::new(),
+                        research_brief: String::new(),
+                        kind: crate::domain::ProjectKind::User,
+                    });
+                }
+                a.request_topic_move(topic, w, cx);
+            });
+            w.render_frame(cx);
+            assert!(app.read(cx).topic_move.is_some());
+            assert!(!w.has_active_prompt());
+            before
+        })
+        .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("topic-move-dialog.png"))
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("topic-move-project", cx);
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(300));
     cx.run_until_parked();
-    cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(root.join("topic-move-project-list.png")).unwrap();
+    cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+        .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("topic-move-project-list.png"))
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         // Close the popup before clicking the footer, which it overlays.
         w.press("escape", cx);
         w.render_frame(cx);
-        if app.read(cx).topic_move.is_some() { w.click("cancel-topic-move", cx); }
+        if app.read(cx).topic_move.is_some() {
+            w.click("cancel-topic-move", cx);
+        }
         assert!(app.read(cx).topic_move.is_none());
         assert_eq!(app.read(cx).store.topics(), before_move.topics());
         app.update(cx, |a, cx| {
@@ -633,69 +639,136 @@ pub fn run_migration() {
         app.update(cx, |a, cx| {
             a.store = before_move.clone();
             a.todo_batch = Some(crate::batch::TodoBatch {
-                project_id: 1, items: vec![goal], completed: 0, runs_completed: 0,
+                project_id: 1,
+                items: vec![goal],
+                completed: 0,
+                runs_completed: 0,
                 state: crate::batch::BatchState::Paused("Paused for QA".into()),
-                run_ids: Default::default(), done_items: vec![], failed_items: vec![], failed_tasks: vec![],
+                run_ids: Default::default(),
+                done_items: vec![],
+                failed_items: vec![],
+                failed_tasks: vec![],
             });
             a.request_topic_move(topic, w, cx);
         });
         w.render_frame(cx);
         assert!(!w.has_active_prompt());
-    }).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(root.join("topic-move-blocked.png")).unwrap();
+    })
+    .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("topic-move-blocked.png"))
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("cancel-topic-move", cx);
-        app.update(cx, |a, cx| { a.store = before_move; a.navigate(Scope::Topic(topic), w, cx); });
-    }).unwrap();
-    let (moved_topic, moved_goal) = cx.update_window(handle, |_, w, cx| {
-        let ids = app.update(cx, |a, cx| {
-            a.todo_batch = None;
-            let mut project = a.store.projects()[0].clone();
-            project.id = 2; project.name = "Source project".into();
-            a.store.push_project(project);
-            let moved_topic = a.store.create_topic(2, "Moved market research topic with a long descriptive title").unwrap();
-            let moved_goal = a.store.create_task_in_topic("Moved goal one", 2, crate::domain::Stage::Planned, None, Some(moved_topic)).unwrap();
-            a.store.create_task_in_topic("Moved goal two", 2, crate::domain::Stage::Planned, None, Some(moved_topic)).unwrap();
-            // A newer goal in the older topic must not split the moved topic's group.
-            a.store.create_task_in_topic("New goal in original topic", 1, crate::domain::Stage::Planned, None, Some(topic)).unwrap();
-            a.store.move_topic_project(moved_topic, 1).unwrap();
-            a.navigate(Scope::Project(1), w, cx);
-            (moved_topic, moved_goal)
+        app.update(cx, |a, cx| {
+            a.store = before_move;
+            a.navigate(Scope::Topic(topic), w, cx);
         });
-        w.render_frame(cx);
-        let moved_header = w.find(format!("collection-topic-{}", ids.0));
-        let original_header = w.find(format!("collection-topic-{topic}"));
-        assert!(moved_header.label().unwrap().contains("2 goals"));
-        assert!(original_header.label().unwrap().contains("2 goals"));
-        assert!(moved_header.bounds().top() < w.find(format!("task-row-{}", ids.1)).bounds().top());
-        assert!(w.find(format!("task-row-{}", ids.1)).bounds().top() < original_header.bounds().top());
-        assert!(original_header.bounds().top() < w.find(format!("task-row-{goal}")).bounds().top());
-        assert!(w.try_find(format!("topic-link-{topic}")).is_none());
-        ids
-    }).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(root.join("project-topic-groups.png")).unwrap();
+    })
+    .unwrap();
+    let (moved_topic, moved_goal) = cx
+        .update_window(handle, |_, w, cx| {
+            let ids = app.update(cx, |a, cx| {
+                a.todo_batch = None;
+                let mut project = a.store.projects()[0].clone();
+                project.id = 2;
+                project.name = "Source project".into();
+                a.store.push_project(project);
+                let moved_topic = a
+                    .store
+                    .create_topic(
+                        2,
+                        "Moved market research topic with a long descriptive title",
+                    )
+                    .unwrap();
+                let moved_goal = a
+                    .store
+                    .create_task_in_topic(
+                        "Moved goal one",
+                        2,
+                        crate::domain::Stage::InProgress,
+                        None,
+                        Some(moved_topic),
+                    )
+                    .unwrap();
+                a.store
+                    .create_task_in_topic(
+                        "Moved goal two",
+                        2,
+                        crate::domain::Stage::InProgress,
+                        None,
+                        Some(moved_topic),
+                    )
+                    .unwrap();
+                // A newer goal in the older topic must not split the moved topic's group.
+                a.store
+                    .create_task_in_topic(
+                        "New goal in original topic",
+                        1,
+                        crate::domain::Stage::InProgress,
+                        None,
+                        Some(topic),
+                    )
+                    .unwrap();
+                a.store.move_topic_project(moved_topic, 1).unwrap();
+                a.navigate(Scope::Project(1), w, cx);
+                (moved_topic, moved_goal)
+            });
+            w.render_frame(cx);
+            let moved_header = w.find(format!("collection-topic-{}", ids.0));
+            let original_header = w.find(format!("collection-topic-{topic}"));
+            assert!(moved_header.label().unwrap().contains("2 goals"));
+            assert!(original_header.label().unwrap().contains("2 goals"));
+            assert!(
+                moved_header.bounds().top() < w.find(format!("task-row-{}", ids.1)).bounds().top()
+            );
+            assert!(
+                w.find(format!("task-row-{}", ids.1)).bounds().top()
+                    < original_header.bounds().top()
+            );
+            assert!(
+                original_header.bounds().top() < w.find(format!("task-row-{goal}")).bounds().top()
+            );
+            assert!(w.try_find(format!("topic-link-{topic}")).is_none());
+            ids
+        })
+        .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(root.join("project-topic-groups.png"))
+        .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("collection-topic-{moved_topic}"), cx);
         assert_eq!(app.read(cx).scope(), Scope::Topic(moved_topic));
         app.update(cx, |a, cx| {
             a.navigate(Scope::Project(1), w, cx);
-            a.set_query("Moved goal one".into()); cx.notify();
+            a.set_query("Moved goal one".into());
+            cx.notify();
         });
         w.render_frame(cx);
-        assert!(w.find(format!("collection-topic-{moved_topic}")).label().unwrap().contains("1 goals"));
+        assert!(
+            w.find(format!("collection-topic-{moved_topic}"))
+                .label()
+                .unwrap()
+                .contains("1 goals")
+        );
         assert!(w.find(format!("task-row-{moved_goal}")).visible());
         assert!(w.try_find(format!("collection-topic-{topic}")).is_none());
-    }).unwrap();
+    })
+    .unwrap();
     println!("Migration modal QA passed: {}", root.display());
 }
-
 
 /// The Topic shortcut must match the report task’s View final report action.
 pub fn goal_actions() {
     let mut store = Store::empty();
-    store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+    store.project_at_mut(0).unwrap().directory =
+        std::env::temp_dir().to_string_lossy().into_owned();
     store.set_default_model("test/model".into());
-    let goal = store.create_research_goal("Completed research".into(), "Scope".into(), 1).unwrap();
+    let goal = store
+        .create_research_goal("Completed research".into(), "Scope".into(), 1)
+        .unwrap();
     let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analysis","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#).unwrap();
     for id in &steps {
         let mut run = store.prepare_run(*id).unwrap();
@@ -707,26 +780,31 @@ pub fn goal_actions() {
     store.sync_goal_progress(goal);
     let topic = store.task(goal).unwrap().topic_id.unwrap();
     let report = *steps.last().unwrap();
-    assert!(store.research_export(goal).is_ok());
-    let unfinished = store.create_research_goal_in_topic("Unfinished goal".into(), "Scope".into(), 1, Some(topic)).unwrap();
+    let unfinished = store
+        .create_research_goal_in_topic("Unfinished goal".into(), "Scope".into(), 1, Some(topic))
+        .unwrap();
     let mut cx = HeadlessAppContext::with_platform(
-        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
+        platform::current_headless_renderer,
+    );
     cx.update(init);
     let mut app = None;
-    let window = cx.open_window(size(px(1000.), px(720.)), |w, cx| {
-        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| {
-            a.store = store.clone();
-            a.navigate(Scope::Topic(topic), w, cx);
-        });
-        app = Some(view.clone());
-        cx.new(|cx| base::Root::new(view, w, cx))
-    }).unwrap();
+    let window = cx
+        .open_window(size(px(1000.), px(720.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.store = store.clone();
+                a.navigate(Scope::Topic(topic), w, cx);
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
     let app = app.unwrap();
     let handle = window.into();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert!(w.find(format!("topic-export-{goal}")).visible());
         w.click(format!("topic-goal-{unfinished}"), cx);
         assert_eq!(app.read(cx).selected(), Some(unfinished));
         assert_eq!(app.read(cx).task_result_context(), None);
@@ -756,15 +834,30 @@ pub fn goal_actions() {
         w.click("task-view-result", cx);
         let expected = {
             let a = app.read(cx);
-            (a.scope(), a.selected(), a.selected_run(), a.task_result_context(),
-                a.show_run_result, a.show_run_details)
+            (
+                a.scope(),
+                a.selected(),
+                a.selected_run(),
+                a.task_result_context(),
+                a.show_run_result,
+                a.show_run_details,
+            )
         };
         app.update(cx, |a, cx| a.navigate(Scope::Topic(topic), w, cx));
         w.render_frame(cx);
         w.click(format!("topic-report-{goal}"), cx);
         let a = app.read(cx);
-        assert_eq!((a.scope(), a.selected(), a.selected_run(), a.task_result_context(),
-            a.show_run_result, a.show_run_details), expected);
+        assert_eq!(
+            (
+                a.scope(),
+                a.selected(),
+                a.selected_run(),
+                a.task_result_context(),
+                a.show_run_result,
+                a.show_run_details
+            ),
+            expected
+        );
         assert!(a.show_run_result);
         assert_eq!(a.task_result_context(), Some(report));
         w.render_frame(cx);
@@ -788,7 +881,10 @@ pub fn goal_actions() {
         assert_eq!(app.read(cx).selected(), Some(report));
         // An old successful report is insufficient when the latest attempt failed.
         app.update(cx, |a, cx| {
-            { let index = a.store.runs().len() - 1; a.store.run_at_mut(index).unwrap().status = "Failed".into(); }
+            {
+                let index = a.store.runs().len() - 1;
+                a.store.run_at_mut(index).unwrap().status = "Failed".into();
+            }
             cx.notify();
         });
         w.render_frame(cx);
@@ -805,27 +901,41 @@ pub fn goal_actions() {
             cx.notify();
         });
         w.render_frame(cx);
-        assert!(w.try_find(format!("topic-export-{goal}")).is_none());
         assert!(w.try_find(format!("topic-report-{goal}")).is_none());
-    }).unwrap();
+    })
+    .unwrap();
     // A long tree must reveal arrow destinations without moving already visible rows.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.store = store.clone();
             for index in 0..35 {
-                a.store.create_research_goal_in_topic(format!("Extra goal {index}"), "Scope".into(), 1, Some(topic)).unwrap();
+                a.store
+                    .create_research_goal_in_topic(
+                        format!("Extra goal {index}"),
+                        "Scope".into(),
+                        1,
+                        Some(topic),
+                    )
+                    .unwrap();
             }
             a.open_sidebar_task(goal, w, cx);
         });
-    }).unwrap();
+    })
+    .unwrap();
     for _ in 0..4 {
         cx.run_until_parked();
-        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
     }
     cx.update_window(handle, |_, w, cx| {
         let bounds = w.find(format!("sidebar-task-{goal}")).bounds();
         let viewport = app.read(cx).sidebar_scroll.bounds();
-        assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom(), "row={bounds:?} viewport={viewport:?} offset={:?} pending={:?}", app.read(cx).sidebar_scroll.offset(), app.read(cx).sidebar_reveal);
+        assert!(
+            bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom(),
+            "row={bounds:?} viewport={viewport:?} offset={:?} pending={:?}",
+            app.read(cx).sidebar_scroll.offset(),
+            app.read(cx).sidebar_reveal
+        );
         // Simulate manually scrolling away, then navigating from the result panel.
         app.update(cx, |a, cx| {
             a.sidebar_scroll.set_offset(point(px(0.), px(0.)));
@@ -833,30 +943,41 @@ pub fn goal_actions() {
         });
         w.render_frame(cx);
         w.click("next-task", cx);
-    }).unwrap();
+    })
+    .unwrap();
     for _ in 0..4 {
         cx.run_until_parked();
-        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
     }
     cx.update_window(handle, |_, w, cx| {
         assert_eq!(app.read(cx).task_result_context(), Some(steps[0]));
         let bounds = w.find(format!("sidebar-task-{}", steps[0])).bounds();
         let viewport = app.read(cx).sidebar_scroll.bounds();
-        assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom(), "row={bounds:?} viewport={viewport:?} offset={:?} pending={:?}", app.read(cx).sidebar_scroll.offset(), app.read(cx).sidebar_reveal);
+        assert!(
+            bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom(),
+            "row={bounds:?} viewport={viewport:?} offset={:?} pending={:?}",
+            app.read(cx).sidebar_scroll.offset(),
+            app.read(cx).sidebar_reveal
+        );
         w.click("previous-task", cx);
-    }).unwrap();
+    })
+    .unwrap();
     for _ in 0..4 {
         cx.run_until_parked();
-        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
     }
     let offset = cx.update(|cx| app.read(cx).sidebar_scroll.offset());
     cx.update_window(handle, |_, w, cx| {
         assert_eq!(app.read(cx).task_result_context(), Some(goal));
         app.update(cx, |a, cx| a.open_sidebar_task(goal, w, cx));
-    }).unwrap();
+    })
+    .unwrap();
     for _ in 0..4 {
         cx.run_until_parked();
-        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
     }
     assert_eq!(cx.update(|cx| app.read(cx).sidebar_scroll.offset()), offset);
     let neighbor = cx.update(|cx| app.read(cx).store.detail_task_neighbors(report).1);
@@ -864,25 +985,32 @@ pub fn goal_actions() {
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| {
                 a.collapsed_sidebar_goals.push(goal);
-                if from_result { a.open_sidebar_task(report, w, cx); }
-                else { a.open_task(report, w, cx); }
-                a.sidebar_scroll.set_offset(point(px(0.), -a.sidebar_scroll.max_offset().y));
+                if from_result {
+                    a.open_sidebar_task(report, w, cx);
+                } else {
+                    a.open_task(report, w, cx);
+                }
+                a.sidebar_scroll
+                    .set_offset(point(px(0.), -a.sidebar_scroll.max_offset().y));
             });
             w.render_frame(cx);
             w.click("next-task", cx);
-        }).unwrap();
+        })
+        .unwrap();
         for _ in 0..4 {
             cx.run_until_parked();
-            cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+            cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+                .unwrap();
         }
         cx.update_window(handle, |_, w, cx| {
             assert_eq!(app.read(cx).selected(), Some(neighbor));
             let bounds = w.find(format!("sidebar-task-{neighbor}")).bounds();
             let viewport = app.read(cx).sidebar_scroll.bounds();
             assert!(bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom());
-        }).unwrap();
+        })
+        .unwrap();
     }
-    println!("Topic report navigation and completed-only export shortcuts passed");
+    println!("Topic report navigation passed");
 }
 
 /// Long topic names must remain readable in the project list's topic directory.
@@ -920,12 +1048,26 @@ pub fn topic_directory(cx: &mut HeadlessAppContext, root: &std::path::Path) {
         let app = entity.unwrap();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
-            assert!(w.try_find("topic-directory-scroll").is_none(), "Project list must not duplicate its topic groups");
-            assert!(w.find(format!("collection-topic-{}", topics[4])).bounds().top() < px(250.));
-            assert!(w.try_find(format!("collection-topic-{}", topics[4])).is_some());
-        }).unwrap();
-        cx.capture_screenshot(handle).unwrap()
-            .save(root.join(format!("topic-directory-{width}-{dark}.png"))).unwrap();
+            assert!(
+                w.try_find("topic-directory-scroll").is_none(),
+                "Project list must not duplicate its topic groups"
+            );
+            assert!(
+                w.find(format!("collection-topic-{}", topics[4]))
+                    .bounds()
+                    .top()
+                    < px(250.)
+            );
+            assert!(
+                w.try_find(format!("collection-topic-{}", topics[4]))
+                    .is_some()
+            );
+        })
+        .unwrap();
+        cx.capture_screenshot(handle)
+            .unwrap()
+            .save(root.join(format!("topic-directory-{width}-{dark}.png")))
+            .unwrap();
         cx.update_window(handle, |_, w, cx| {
             w.click(format!("collection-topic-{}", topics[4]), cx);
             assert_eq!(app.read(cx).scope(), Scope::Topic(topics[4]));
@@ -933,18 +1075,44 @@ pub fn topic_directory(cx: &mut HeadlessAppContext, root: &std::path::Path) {
                 a.expanded_sidebar_projects.push(1);
                 cx.notify();
             });
-        }).unwrap();
+        })
+        .unwrap();
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
-            assert_eq!(w.find(format!("topic-{}", topics[4])).label(), Some(format!("Copy · {}", app.read(cx).store.topics().iter().find(|t| t.id == topics[4]).unwrap().display_name()).as_str()));
-        }).unwrap();
+            assert_eq!(
+                w.find(format!("topic-{}", topics[4])).label(),
+                Some(
+                    format!(
+                        "Copy · {}",
+                        app.read(cx)
+                            .store
+                            .topics()
+                            .iter()
+                            .find(|t| t.id == topics[4])
+                            .unwrap()
+                            .display_name()
+                    )
+                    .as_str()
+                )
+            );
+        })
+        .unwrap();
         cx.update_window(handle, |_, w, cx| {
-            assert!(w.try_find("replan-topic").is_none(), "Todo goals must hide Replan");
+            assert!(
+                w.try_find("replan-topic").is_none(),
+                "Todo goals must hide Replan"
+            );
             assert!(w.try_find("regenerate-topic-plan").is_none());
             app.update(cx, |a, cx| {
-                let request = a.store.create_research_request(1, Some(topics[4]), "Review this research plan").unwrap();
-                let ids: Vec<u64> = a.store.tasks().iter()
+                let request = a
+                    .store
+                    .create_research_request(1, Some(topics[4]), "Review this research plan")
+                    .unwrap();
+                let ids: Vec<u64> = a
+                    .store
+                    .tasks()
+                    .iter()
                     .filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none())
                     .map(|t| t.id)
                     .collect();
@@ -962,7 +1130,10 @@ pub fn topic_directory(cx: &mut HeadlessAppContext, root: &std::path::Path) {
             assert_eq!(w.find("regenerate-topic-plan").label(), Some("Regenerate"));
             assert!(w.try_find("replan-topic").is_none());
             app.update(cx, |a, cx| {
-                let ids: Vec<u64> = a.store.tasks().iter()
+                let ids: Vec<u64> = a
+                    .store
+                    .tasks()
+                    .iter()
                     .filter(|t| t.topic_id == Some(topics[4]) && t.parent_id.is_none())
                     .map(|t| t.id)
                     .collect();
@@ -974,9 +1145,12 @@ pub fn topic_directory(cx: &mut HeadlessAppContext, root: &std::path::Path) {
             w.render_frame(cx);
             assert_eq!(w.find("replan-topic").label(), Some("Replan"));
             assert!(w.try_find("regenerate-topic-plan").is_none());
-        }).unwrap();
-        cx.capture_screenshot(handle).unwrap()
-            .save(root.join(format!("topic-plan-transitions-{width}-{dark}.png"))).unwrap();
+        })
+        .unwrap();
+        cx.capture_screenshot(handle)
+            .unwrap()
+            .save(root.join(format!("topic-plan-transitions-{width}-{dark}.png")))
+            .unwrap();
     }
 }
 
@@ -1031,8 +1205,17 @@ fn topic_intake_badges(cx: &mut HeadlessAppContext, root: &std::path::Path) {
                 w.render_frame(cx);
                 let copy = w.find(format!("topic-copy-{}", topics[0].0)).bounds();
                 let title = w.find(format!("topic-name-{}", topics[0].0)).bounds();
-                assert!(copy.right() <= w.find(format!("topic-intake-{}", topics[0].0)).bounds().left(), "Copy and status tags must form a leading group");
-                assert!(copy.right() <= title.left(), "Copy tag must precede the topic title");
+                assert!(
+                    copy.right()
+                        <= w.find(format!("topic-intake-{}", topics[0].0))
+                            .bounds()
+                            .left(),
+                    "Copy and status tags must form a leading group"
+                );
+                assert!(
+                    copy.right() <= title.left(),
+                    "Copy tag must precede the topic title"
+                );
                 for (topic, state) in &topics {
                     let row = w.find(format!("topic-{topic}")).bounds();
                     let title = w.find(format!("topic-name-{topic}")).bounds();
@@ -1040,16 +1223,36 @@ fn topic_intake_badges(cx: &mut HeadlessAppContext, root: &std::path::Path) {
                     assert_eq!(status.label(), Some(*state));
                     let tag = status.bounds();
                     assert!(tag.right() <= title.left(), "Status must precede the title");
-                    assert!(tag.top() < title.bottom() && tag.bottom() > title.top(), "Status must share the title line");
-                    assert_eq!(row.size.height, px(32.), "Topic rows must keep a uniform compact height");
-                    assert!(title.size.width >= px(40.), "The title must retain readable space");
-                    assert!(tag.left() >= row.left() && tag.right() <= row.right(), "Status must fit the sidebar row");
-                    assert!(tag.bottom() <= row.bottom(), "Status must not overlap the next topic");
+                    assert!(
+                        tag.top() < title.bottom() && tag.bottom() > title.top(),
+                        "Status must share the title line"
+                    );
+                    assert_eq!(
+                        row.size.height,
+                        px(32.),
+                        "Topic rows must keep a uniform compact height"
+                    );
+                    assert!(
+                        title.size.width >= px(40.),
+                        "The title must retain readable space"
+                    );
+                    assert!(
+                        tag.left() >= row.left() && tag.right() <= row.right(),
+                        "Status must fit the sidebar row"
+                    );
+                    assert!(
+                        tag.bottom() <= row.bottom(),
+                        "Status must not overlap the next topic"
+                    );
                 }
                 assert!(w.find("topic-copy-indicator").visible());
                 assert_eq!(w.find("topic-intake-status").label(), Some("Draft"));
-            }).unwrap();
-            cx.capture_screenshot(handle).unwrap().save(root.join(format!("topic-intake-{width}-{name}.png"))).unwrap();
+            })
+            .unwrap();
+            cx.capture_screenshot(handle)
+                .unwrap()
+                .save(root.join(format!("topic-intake-{width}-{name}.png")))
+                .unwrap();
         }
     }
 }

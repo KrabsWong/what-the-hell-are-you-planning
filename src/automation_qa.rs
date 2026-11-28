@@ -6,7 +6,11 @@ use crate::{
     domain::{Stage, Store},
     persistence::Storage,
 };
-use gpui_kit::{component::{Theme, ThemeMode}, test::TestWindowExt, *};
+use gpui_kit::{
+    component::{Theme, ThemeMode},
+    test::TestWindowExt,
+    *,
+};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -110,8 +114,7 @@ fn now() -> i64 {
 fn scroll_wizard_field(w: &mut Window, cx: &mut App, app: &Entity<TaskApp>, id: &str) {
     w.render_frame(cx);
     for _ in 0..12 {
-        if w
-            .try_find(id.to_string())
+        if w.try_find(id.to_string())
             .is_some_and(|field| field.visible())
         {
             return;
@@ -202,7 +205,13 @@ fn wizard_actions_check(root: &Path) {
             a.automation_ui.creating,
         )
     });
-    assert_eq!(saved, Some(("Check today's fuel prices in Shenzhen, Guangdong".into(), DefinitionStatus::Draft)));
+    assert_eq!(
+        saved,
+        Some((
+            "Check today's fuel prices in Shenzhen, Guangdong".into(),
+            DefinitionStatus::Draft
+        ))
+    );
     assert!(!creating, "saving finishes the wizard and opens the draft");
     screenshot(&mut cx, handle, &directory, "wizard-step3-saved.png");
     // Lifecycle actions now live on the list rows. The draft detail keeps only
@@ -252,7 +261,6 @@ fn wizard_actions_check(root: &Path) {
     println!("wizard actions passed (enable and save draft both reachable)");
 }
 
-
 /// This drives the real planner-finalize path with a saved planner output.
 fn planning_chain(root: &Path) {
     let directory = root.join("planning");
@@ -260,8 +268,13 @@ fn planning_chain(root: &Path) {
     std::fs::create_dir_all(directory.join("automations")).unwrap();
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(&directory);
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let automation_project = store
         .ensure_automation_project(directory.join("automations").to_string_lossy().into())
         .unwrap();
@@ -282,7 +295,12 @@ fn planning_chain(root: &Path) {
         )
         .unwrap();
     let request = store
-        .create_automation_request(id, automation_project, "Track the semiconductor supply chain", "A sourced note")
+        .create_automation_request(
+            id,
+            automation_project,
+            "Track the semiconductor supply chain",
+            "A sourced note",
+        )
         .unwrap();
     confirm_fixture_understanding(&mut store, request);
     let mut run = store.prepare_request_plan(request).unwrap();
@@ -291,8 +309,7 @@ fn planning_chain(root: &Path) {
     run.output = r#"{"topic_name":"Semiconductor supply","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#.into();
     let run_id = run.id;
     store.push_run(run);
-    store.request_mut(request).unwrap()
-        .planning_run_id = Some(run_id);
+    store.request_mut(request).unwrap().planning_run_id = Some(run_id);
     let topics_before = store.topics().len();
     let tasks_before = store.tasks().len();
     Storage::new(path.clone()).save(&store).unwrap();
@@ -323,7 +340,10 @@ fn planning_chain(root: &Path) {
     let (goals, name, status, topics, tasks, auto_dirs) = read_state(&mut cx, &app, |a| {
         let definition = a.store.automation(id).unwrap();
         (
-            definition.template.as_ref().map(|template| template.goals.len()),
+            definition
+                .template
+                .as_ref()
+                .map(|template| template.goals.len()),
             definition.name.clone(),
             definition.status,
             a.store.topics().len(),
@@ -336,12 +356,26 @@ fn planning_chain(root: &Path) {
                 .unwrap_or_default(),
         )
     });
-    assert_eq!(goals, Some(2), "reviewed goals are frozen into the template");
-    assert_eq!(name, "Semiconductor supply", "the planner names the subject");
-    assert_eq!(status, DefinitionStatus::Draft, "the plan still needs approval");
+    assert_eq!(
+        goals,
+        Some(2),
+        "reviewed goals are frozen into the template"
+    );
+    assert_eq!(
+        name, "Semiconductor supply",
+        "the planner names the subject"
+    );
+    assert_eq!(
+        status,
+        DefinitionStatus::Draft,
+        "the plan still needs approval"
+    );
     assert_eq!(topics, topics_before, "planning must not create a topic");
     assert_eq!(tasks, tasks_before, "planning must not create goals");
-    assert!(auto_dirs.ends_with("automations"), "output lives under Automations: {auto_dirs}");
+    assert!(
+        auto_dirs.ends_with("automations"),
+        "output lives under Automations: {auto_dirs}"
+    );
     assert!(
         !read_state(&mut cx, &app, |a| a.store.runs().iter().any(|candidate| {
             candidate.research_kind == Some(crate::research::ResearchKind::Goal)
@@ -386,7 +420,6 @@ fn planning_chain(root: &Path) {
     println!("automation planning chain passed (reviewed plan frozen, no topic or replanning)");
 }
 
-
 fn confirm_fixture_understanding(store: &mut Store, request: u64) {
     store.apply_request_understanding(request,
         r#"{"summary":"Review the requested subject and deliver a sourced report within the stated scope.","questions":[]}"#,
@@ -428,13 +461,7 @@ fn draft(store: &mut Store, name: &str) -> u64 {
 }
 
 fn enable(store: &mut Store, id: u64) {
-    store
-        .approve_and_enable(
-            id,
-            vec![],
-            now(),
-        )
-        .unwrap();
+    store.approve_and_enable(id, vec![], now()).unwrap();
 }
 
 fn pure_checks(root: &Path) {
@@ -447,7 +474,11 @@ fn pure_checks(root: &Path) {
     let id = draft(&mut store, "Ten-minute check");
     enable(&mut store, id);
     let now = now();
-    store.automation_mut(id).unwrap().policy.allowed_delay_seconds = 1;
+    store
+        .automation_mut(id)
+        .unwrap()
+        .policy
+        .allowed_delay_seconds = 1;
     store.automation_mut(id).unwrap().policy.timeout_seconds = 120;
     store.automation_mut(id).unwrap().anchor = Some(now - 600);
     store.automation_mut(id).unwrap().cursor = Some(now);
@@ -462,11 +493,15 @@ fn pure_checks(root: &Path) {
         restored.occurrence(occurrence).unwrap().status,
         OccurrenceStatus::Queued
     );
-    assert!(restored.plan_automation_ticks(now).is_empty(), "duplicate tick");
+    assert!(
+        restored.plan_automation_ticks(now).is_empty(),
+        "duplicate tick"
+    );
     assert_eq!(
-        restored.automation_occurrence_by_key(
-            &restored.occurrence(occurrence).unwrap().trigger_key
-        ).unwrap().id,
+        restored
+            .automation_occurrence_by_key(&restored.occurrence(occurrence).unwrap().trigger_key)
+            .unwrap()
+            .id,
         occurrence
     );
 
@@ -481,11 +516,8 @@ fn pure_checks(root: &Path) {
     // Pause/edit/archive cancel only unstarted requests.
     let mut store = restored;
     let pending_before = store.occurrence(occurrence).unwrap().id;
-    let cancelled = store.cancel_unstarted_occurrences(
-        id,
-        crate::automation::SkipCode::Paused,
-        "paused by QA",
-    );
+    let cancelled =
+        store.cancel_unstarted_occurrences(id, crate::automation::SkipCode::Paused, "paused by QA");
     assert_eq!(cancelled, vec![pending_before]);
     assert_eq!(
         store.occurrence(occurrence).unwrap().status,
@@ -493,7 +525,11 @@ fn pure_checks(root: &Path) {
     );
 
     // Large missed range is summarized, not expanded.
-    store.automation_mut(id).unwrap().policy.allowed_delay_seconds = 60;
+    store
+        .automation_mut(id)
+        .unwrap()
+        .policy
+        .allowed_delay_seconds = 60;
     store.automation_mut(id).unwrap().anchor = Some(now - 600);
     store.automation_mut(id).unwrap().cursor = Some(now);
     let late = now + 30 * 86_400 + 300;
@@ -508,7 +544,10 @@ fn pure_checks(root: &Path) {
     let mut runner = crate::automation_runtime::FakeAutomationRunner::default();
     runner.start(&store.occurrence(commit.skipped[0]).unwrap().clone());
     assert_eq!(runner.starts.len(), 1);
-    assert!(!runner.starts[0].window_resolved, "a task without an explicit range must stay unresolved");
+    assert!(
+        !runner.starts[0].window_resolved,
+        "a task without an explicit range must stay unresolved"
+    );
 
     // Large history remains bounded and readable.
     let mut history_store = model_store(&directory);
@@ -560,7 +599,7 @@ fn pure_checks(root: &Path) {
                 skipped_to: None,
                 created_at: now - index,
                 deadline_at: None,
-            retry_requested_at: None,
+                retry_requested_at: None,
             }
         };
         occurrence.id = history_store.next_occurrence_id().unwrap();
@@ -595,13 +634,16 @@ fn instruction_validation_check(root: &Path) {
     // SQLite, and prove structural readability plus atomic enable rejection.
     let mut store = model_store(&directory);
     store.set_opencode_path(cli.to_string_lossy().into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
-    let template = crate::automation_execution::build_template(
-        "Track public announcements",
-        "A sourced note",
-    )
-    .unwrap();
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
+    let template =
+        crate::automation_execution::build_template("Track public announcements", "A sourced note")
+            .unwrap();
     let id = store
         .create_automation_draft(
             1,
@@ -742,7 +784,10 @@ fn expected_only_ui_check(directory: &Path, shape: AutomationShape) {
     assert!(feedback.contains("input validation"), "{feedback}");
     assert_eq!(automations, 0, "{shape:?} rejection must not save a draft");
     assert_eq!(runs, 0, "{shape:?} rejection must not dispatch");
-    assert!(!marker.exists(), "{shape:?} rejection must not invoke the agent");
+    assert!(
+        !marker.exists(),
+        "{shape:?} rejection must not invoke the agent"
+    );
     screenshot(&mut cx, handle, directory, "expected-only-rejected.png");
 }
 
@@ -798,12 +843,21 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let mut store = model_store(&project);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/automation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let id = draft(&mut store, "Execution chain");
     enable(&mut store, id);
     let now = now();
-    store.automation_mut(id).unwrap().policy.allowed_delay_seconds = 1;
+    store
+        .automation_mut(id)
+        .unwrap()
+        .policy
+        .allowed_delay_seconds = 1;
     store.automation_mut(id).unwrap().policy.timeout_seconds = 120;
     store.automation_mut(id).unwrap().anchor = Some(now - 600);
     store.automation_mut(id).unwrap().cursor = Some(now);
@@ -838,24 +892,44 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let handle: AnyWindowHandle = window.into();
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     loop {
-        let status = cx.update_window(window.into(), |_, w, cx| {
-            app.update(cx, |a, cx| a.poll_runtime(cx));
-            w.render_frame(cx);
-            app.read(cx)
-                .store
-                .occurrence(occurrence)
-                .map(|value| value.status)
-                .unwrap()
-        })
-        .unwrap();
+        let status = cx
+            .update_window(window.into(), |_, w, cx| {
+                app.update(cx, |a, cx| a.poll_runtime(cx));
+                w.render_frame(cx);
+                app.read(cx)
+                    .store
+                    .occurrence(occurrence)
+                    .map(|value| value.status)
+                    .unwrap()
+            })
+            .unwrap();
         if status.is_terminal() {
             break;
         }
         if std::time::Instant::now() >= deadline {
             let debug = read_state(&mut cx, &app, |a| {
                 let occ = a.store.occurrence(occurrence).unwrap();
-                let runs = a.store.runs().iter().filter(|r| r.automation_occurrence_id == Some(occurrence)).map(|r| (r.id, r.task_id, r.status.clone(), r.logs.iter().rev().take(3).cloned().collect::<Vec<_>>())).collect::<Vec<_>>();
-                (occ.status, occ.reason.clone(), runs, a.queued_runs.len(), a.active_runs.len())
+                let runs = a
+                    .store
+                    .runs()
+                    .iter()
+                    .filter(|r| r.automation_occurrence_id == Some(occurrence))
+                    .map(|r| {
+                        (
+                            r.id,
+                            r.task_id,
+                            r.status.clone(),
+                            r.logs.iter().rev().take(3).cloned().collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                (
+                    occ.status,
+                    occ.reason.clone(),
+                    runs,
+                    a.queued_runs.len(),
+                    a.active_runs.len(),
+                )
             });
             panic!("automation execution chain timed out in {status:?}: {debug:?}");
         }
@@ -888,7 +962,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             .collect()
     });
     assert_eq!(sessions.len(), 3, "each step gets its own session");
-    assert_eq!(read_state(&mut cx, &app, |a| a.store.research_children(goal).len()), 3);
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.store.research_children(goal).len()),
+        3
+    );
     assert!(read_state(&mut cx, &app, |a| a
         .store
         .goal_tasks_complete(goal)));
@@ -900,7 +977,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     // Report regeneration is an ordinary entry point and keeps the occurrence
     // snapshot instead of creating a run without automation ownership.
     let source = read_state(&mut cx, &app, |a| {
-        a.store.occurrence(occurrence).unwrap().final_run_id.unwrap()
+        a.store
+            .occurrence(occurrence)
+            .unwrap()
+            .final_run_id
+            .unwrap()
     });
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
@@ -927,19 +1008,39 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             .update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| a.poll_runtime(cx));
                 w.render_frame(cx);
-                app.read(cx).store.runs().iter()
-                    .filter(|run| run.automation_occurrence_id == Some(occurrence) && run.id > source)
+                app.read(cx)
+                    .store
+                    .runs()
+                    .iter()
+                    .filter(|run| {
+                        run.automation_occurrence_id == Some(occurrence) && run.id > source
+                    })
                     .filter(|run| run.status == "Succeeded" && !run.output.trim().is_empty())
                     .max_by_key(|run| run.id)
                     .map(|run| run.id)
             })
             .unwrap();
-        if let Some(id) = found { break id; }
+        if let Some(id) = found {
+            break id;
+        }
         if std::time::Instant::now() >= regeneration_deadline {
             let debug = read_state(&mut cx, &app, |a| {
                 (
                     a.error.clone(),
-                    a.store.runs().iter().filter(|run| run.automation_occurrence_id == Some(occurrence)).map(|run| (run.id, run.task_id, run.status.clone(), run.output.len(), run.logs.iter().rev().take(3).cloned().collect::<Vec<_>>())).collect::<Vec<_>>(),
+                    a.store
+                        .runs()
+                        .iter()
+                        .filter(|run| run.automation_occurrence_id == Some(occurrence))
+                        .map(|run| {
+                            (
+                                run.id,
+                                run.task_id,
+                                run.status.clone(),
+                                run.output.len(),
+                                run.logs.iter().rev().take(3).cloned().collect::<Vec<_>>(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
                     a.queued_runs.len(),
                     a.active_runs.len(),
                 )
@@ -950,20 +1051,29 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     };
     let (final_run_id, regenerated_model, regenerated_dir, historical_regeneration) =
         read_state(&mut cx, &app, |a| {
-        let run = a.store.runs().iter().find(|run| run.id == regenerated).unwrap();
-        (
-            a.store.occurrence(occurrence).unwrap().final_run_id,
-            run.model.clone(),
-            run.directory.clone(),
-            crate::research::is_historical_report_regeneration(run),
-        )
-    });
+            let run = a
+                .store
+                .runs()
+                .iter()
+                .find(|run| run.id == regenerated)
+                .unwrap();
+            (
+                a.store.occurrence(occurrence).unwrap().final_run_id,
+                run.model.clone(),
+                run.directory.clone(),
+                crate::research::is_historical_report_regeneration(run),
+            )
+        });
     assert_eq!(final_run_id, Some(regenerated));
     assert!(historical_regeneration);
     assert_eq!(regenerated_model, "fixture/advise");
     // Regeneration keeps the occurrence's own working directory and leaves no
     // automation-only agent configuration behind.
-    assert!(!PathBuf::from(&regenerated_dir).join("opencode.json").exists());
+    assert!(
+        !PathBuf::from(&regenerated_dir)
+            .join("opencode.json")
+            .exists()
+    );
     // A regeneration gets its own deadline. A hung fake CLI must be cancelled, the
     // slot released, and the previous successful report preserved.
     let timeout_source = regenerated;
@@ -984,7 +1094,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         a.store
             .runs()
             .iter()
-            .filter(|run| run.automation_occurrence_id == Some(occurrence) && run.id > timeout_source)
+            .filter(|run| {
+                run.automation_occurrence_id == Some(occurrence) && run.id > timeout_source
+            })
             .max_by_key(|run| run.id)
             .map(|run| run.id)
             .expect("timed-out regeneration run")
@@ -1018,17 +1130,26 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         (
             a.store.occurrence(occurrence).unwrap().final_run_id,
             a.store.occurrence(occurrence).unwrap().status,
-            a.store.runs().iter().find(|run| run.id == timeout_run).map(|run| run.status.clone()),
+            a.store
+                .runs()
+                .iter()
+                .find(|run| run.id == timeout_run)
+                .map(|run| run.status.clone()),
         )
     });
     assert_eq!(final_report, Some(regenerated));
     assert_eq!(status, OccurrenceStatus::Succeeded);
     assert_eq!(status, OccurrenceStatus::Succeeded);
     assert!(
-        matches!(timeout_status.as_deref(), Some("Cancelled") | Some("Failed")),
+        matches!(
+            timeout_status.as_deref(),
+            Some("Cancelled") | Some("Failed")
+        ),
         "{timeout_status:?}"
     );
-    println!("real queue automation chain passed (fake CLI, 3 steps, isolated sessions, regeneration gated and timed out)");
+    println!(
+        "real queue automation chain passed (fake CLI, 3 steps, isolated sessions, regeneration gated and timed out)"
+    );
 }
 
 /// Simulate a crash after a session started, reopen, verify the session, import its
@@ -1058,8 +1179,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let mut store = model_store(&project);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/automation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let id = draft(&mut store, "Recover automation");
     enable(&mut store, id);
     let now = now();
@@ -1068,19 +1194,29 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let plans = store.plan_automation_ticks(now);
     let commit = store.commit_automation_tick(&plans[0], now).unwrap();
     let occurrence = commit.queued[0];
-    let goal = store.occurrence(occurrence).unwrap().research_goal_id.unwrap();
+    let goal = store
+        .occurrence(occurrence)
+        .unwrap()
+        .research_goal_id
+        .unwrap();
     let first_task = store.research_children(goal)[0];
     store
         .occurrence_mut(occurrence)
         .unwrap()
         .mark_running(now - 20)
         .unwrap();
-    let mut run = store.prepare_occurrence_run(&store.occurrence(occurrence).unwrap().clone(), now - 20).unwrap();
+    let mut run = store
+        .prepare_occurrence_run(&store.occurrence(occurrence).unwrap().clone(), now - 20)
+        .unwrap();
     run.task_id = first_task;
     run.status = "Running".into();
     run.session_id = Some("ses_automation_recovery".into());
     run.started_at = crate::opencode::timestamp();
-    run.directory = store.execution_directory(first_task).unwrap().to_string_lossy().into();
+    run.directory = store
+        .execution_directory(first_task)
+        .unwrap()
+        .to_string_lossy()
+        .into();
     std::fs::create_dir_all(&run.directory).unwrap();
     let output = serde_json::json!({"status":"complete","report":"Recovered automation evidence","sources":[{"title":"Recovered source","url":"https://example.com/automation-recovery","published_at":"unknown"}]}).to_string();
     let transcript = serde_json::json!({"messages":[
@@ -1093,10 +1229,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         transcript.to_string(),
     )
     .unwrap();
-    run.logs.push("[fixture] Crashed after the collection session started.".into());
+    run.logs
+        .push("[fixture] Crashed after the collection session started.".into());
     let run_id = run.id;
     store.push_run(run);
-    store.occurrence_mut(occurrence).unwrap().run_ids.push(run_id);
+    store
+        .occurrence_mut(occurrence)
+        .unwrap()
+        .run_ids
+        .push(run_id);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let _ = first_task;
@@ -1156,7 +1297,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             a.store.occurrence(occurrence).unwrap().final_run_id,
         )
     });
-    assert!(runs >= 3, "recovered collection plus two following steps: {runs}");
+    assert!(
+        runs >= 3,
+        "recovered collection plus two following steps: {runs}"
+    );
     assert!(final_report.is_some());
     assert!(read_state(&mut cx, &app, |a| a
         .store
@@ -1199,7 +1343,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     definition.cursor,
                     definition.approval_current(),
                     a.error.clone(),
-                    a.store.plan_automation_ticks(chrono::Utc::now().timestamp()).len(),
+                    a.store
+                        .plan_automation_ticks(chrono::Utc::now().timestamp())
+                        .len(),
                 )
             });
             panic!("next period must be created after recovery: {debug:?}")
@@ -1228,7 +1374,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         );
         std::thread::sleep(Duration::from_millis(10));
     }
-    println!("recovery automation chain passed (crash, reopen, session import, continuation, next period)");
+    println!(
+        "recovery automation chain passed (crash, reopen, session import, continuation, next period)"
+    );
 }
 
 /// Normal step entry points must route automation-owned steps to their occurrence
@@ -1258,8 +1406,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let mut store = model_store(&project);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/automation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let id = draft(&mut store, "Paused recovery");
     enable(&mut store, id);
     let now = now();
@@ -1268,19 +1421,34 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let plans = store.plan_automation_ticks(now);
     let commit = store.commit_automation_tick(&plans[0], now).unwrap();
     let occurrence = commit.queued[0];
-    let goal = store.occurrence(occurrence).unwrap().research_goal_id.unwrap();
+    let goal = store
+        .occurrence(occurrence)
+        .unwrap()
+        .research_goal_id
+        .unwrap();
     let first_task = store.research_children(goal)[0];
-    store.occurrence_mut(occurrence).unwrap().mark_running(now - 20).unwrap();
-    store.occurrence_mut(occurrence).unwrap().transition(
-        crate::automation::OccurrenceStatus::Running,
-        None,
-    ).ok();
-    let mut run = store.prepare_occurrence_run(&store.occurrence(occurrence).unwrap().clone(), now - 20).unwrap();
+    store
+        .occurrence_mut(occurrence)
+        .unwrap()
+        .mark_running(now - 20)
+        .unwrap();
+    store
+        .occurrence_mut(occurrence)
+        .unwrap()
+        .transition(crate::automation::OccurrenceStatus::Running, None)
+        .ok();
+    let mut run = store
+        .prepare_occurrence_run(&store.occurrence(occurrence).unwrap().clone(), now - 20)
+        .unwrap();
     run.task_id = first_task;
     run.status = "Running".into();
     run.session_id = Some("ses_paused_recovery".into());
     run.started_at = crate::opencode::timestamp();
-    run.directory = store.execution_directory(first_task).unwrap().to_string_lossy().into();
+    run.directory = store
+        .execution_directory(first_task)
+        .unwrap()
+        .to_string_lossy()
+        .into();
     std::fs::create_dir_all(&run.directory).unwrap();
     let output = serde_json::json!({"status":"complete","report":"Paused recovered evidence","sources":[{"title":"Paused source","url":"https://example.com/paused-recovery","published_at":"unknown"}]}).to_string();
     let transcript = serde_json::json!({"messages":[
@@ -1288,13 +1456,24 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         {"type":"assistant","content":[{"type":"text","text":output}]},
         {"type":"idle","outcome":"succeeded"}
     ]});
-    std::fs::write(PathBuf::from(&run.directory).join("session-export.json"), transcript.to_string()).unwrap();
+    std::fs::write(
+        PathBuf::from(&run.directory).join("session-export.json"),
+        transcript.to_string(),
+    )
+    .unwrap();
     let run_id = run.id;
     store.push_run(run);
-    store.occurrence_mut(occurrence).unwrap().run_ids.push(run_id);
+    store
+        .occurrence_mut(occurrence)
+        .unwrap()
+        .run_ids
+        .push(run_id);
     // User pauses while the current period is running; restart must preserve that.
     store.pause_automation(id, now).unwrap();
-    assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::Paused);
+    assert_eq!(
+        store.automation(id).unwrap().status,
+        DefinitionStatus::Paused
+    );
     assert_eq!(store.automation(id).unwrap().cursor, None);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
@@ -1338,12 +1517,19 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             assert_eq!(status, OccurrenceStatus::Succeeded);
             break;
         }
-        assert!(std::time::Instant::now() < deadline, "paused recovery timed out in {status:?}");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "paused recovery timed out in {status:?}"
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
     let (status, cursor, reason) = read_state(&mut cx, &app, |a| {
         let definition = a.store.automation(id).unwrap();
-        (definition.status, definition.cursor, definition.attention_reason.clone())
+        (
+            definition.status,
+            definition.cursor,
+            definition.attention_reason.clone(),
+        )
     });
     assert_eq!(status, DefinitionStatus::Paused);
     assert_eq!(cursor, None);
@@ -1376,8 +1562,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let mut store = model_store(&project);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/automation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let id = draft(&mut store, "Archived recovery");
     enable(&mut store, id);
     let now = now();
@@ -1386,19 +1577,34 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let plans = store.plan_automation_ticks(now);
     let commit = store.commit_automation_tick(&plans[0], now).unwrap();
     let occurrence = commit.queued[0];
-    let goal = store.occurrence(occurrence).unwrap().research_goal_id.unwrap();
+    let goal = store
+        .occurrence(occurrence)
+        .unwrap()
+        .research_goal_id
+        .unwrap();
     let first_task = store.research_children(goal)[0];
-    store.occurrence_mut(occurrence).unwrap().mark_running(now - 20).unwrap();
-    store.occurrence_mut(occurrence).unwrap().transition(
-        crate::automation::OccurrenceStatus::Running,
-        None,
-    ).ok();
-    let mut run = store.prepare_occurrence_run(&store.occurrence(occurrence).unwrap().clone(), now - 20).unwrap();
+    store
+        .occurrence_mut(occurrence)
+        .unwrap()
+        .mark_running(now - 20)
+        .unwrap();
+    store
+        .occurrence_mut(occurrence)
+        .unwrap()
+        .transition(crate::automation::OccurrenceStatus::Running, None)
+        .ok();
+    let mut run = store
+        .prepare_occurrence_run(&store.occurrence(occurrence).unwrap().clone(), now - 20)
+        .unwrap();
     run.task_id = first_task;
     run.status = "Running".into();
     run.session_id = Some("ses_archived_recovery".into());
     run.started_at = crate::opencode::timestamp();
-    run.directory = store.execution_directory(first_task).unwrap().to_string_lossy().into();
+    run.directory = store
+        .execution_directory(first_task)
+        .unwrap()
+        .to_string_lossy()
+        .into();
     std::fs::create_dir_all(&run.directory).unwrap();
     let output = serde_json::json!({"status":"complete","report":"Paused recovered evidence","sources":[{"title":"Paused source","url":"https://example.com/paused-recovery","published_at":"unknown"}]}).to_string();
     let transcript = serde_json::json!({"messages":[
@@ -1406,13 +1612,24 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         {"type":"assistant","content":[{"type":"text","text":output}]},
         {"type":"idle","outcome":"succeeded"}
     ]});
-    std::fs::write(PathBuf::from(&run.directory).join("session-export.json"), transcript.to_string()).unwrap();
+    std::fs::write(
+        PathBuf::from(&run.directory).join("session-export.json"),
+        transcript.to_string(),
+    )
+    .unwrap();
     let run_id = run.id;
     store.push_run(run);
-    store.occurrence_mut(occurrence).unwrap().run_ids.push(run_id);
+    store
+        .occurrence_mut(occurrence)
+        .unwrap()
+        .run_ids
+        .push(run_id);
     // User pauses while the current period is running; restart must preserve that.
     store.archive_automation(id, now).unwrap();
-    assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::Archived);
+    assert_eq!(
+        store.automation(id).unwrap().status,
+        DefinitionStatus::Archived
+    );
     assert_eq!(store.automation(id).unwrap().cursor, None);
     let path = directory.join("workspace.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
@@ -1456,12 +1673,19 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             assert_eq!(status, OccurrenceStatus::Succeeded);
             break;
         }
-        assert!(std::time::Instant::now() < deadline, "archived recovery timed out in {status:?}");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "archived recovery timed out in {status:?}"
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
     let (status, cursor, reason) = read_state(&mut cx, &app, |a| {
         let definition = a.store.automation(id).unwrap();
-        (definition.status, definition.cursor, definition.attention_reason.clone())
+        (
+            definition.status,
+            definition.cursor,
+            definition.attention_reason.clone(),
+        )
     });
     assert_eq!(status, DefinitionStatus::Archived);
     assert_eq!(cursor, None);
@@ -1510,8 +1734,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let mut store = model_store(&project);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/automation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let id = draft(&mut store, "Regeneration recovery");
     enable(&mut store, id);
     let now = now();
@@ -1520,7 +1749,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let plans = store.plan_automation_ticks(now);
     let commit = store.commit_automation_tick(&plans[0], now).unwrap();
     let occurrence = commit.queued[0];
-    store.occurrence_mut(occurrence).unwrap().mark_running(now - 60).unwrap();
+    store
+        .occurrence_mut(occurrence)
+        .unwrap()
+        .mark_running(now - 60)
+        .unwrap();
     let mut runner = crate::automation_runtime::FakeAutomationRunner::default();
     runner.complete(&mut store, occurrence, now).unwrap();
     assert_eq!(
@@ -1541,15 +1774,24 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     regen.status = "Running".into();
     regen.session_id = Some("ses_late_regeneration".into());
     regen.started_at = crate::opencode::timestamp();
-    regen.directory = store.execution_directory(task).unwrap().to_string_lossy().into();
+    regen.directory = store
+        .execution_directory(task)
+        .unwrap()
+        .to_string_lossy()
+        .into();
     std::fs::create_dir_all(&regen.directory).unwrap();
-    let output = serde_json::json!({"status":"complete","report":"LATE REGENERATION","sources":[]}).to_string();
+    let output = serde_json::json!({"status":"complete","report":"LATE REGENERATION","sources":[]})
+        .to_string();
     let transcript = serde_json::json!({"messages":[
         {"type":"user","text":regen.prompt},
         {"type":"assistant","content":[{"type":"text","text":output}]},
         {"type":"idle","outcome":"succeeded"}
     ]});
-    std::fs::write(PathBuf::from(&regen.directory).join("session-export.json"), transcript.to_string()).unwrap();
+    std::fs::write(
+        PathBuf::from(&regen.directory).join("session-export.json"),
+        transcript.to_string(),
+    )
+    .unwrap();
     let regen_id = regen.id;
     store.push_run(regen);
     let path = directory.join("workspace.sqlite3");
@@ -1593,7 +1835,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                     && !a.store.runs().iter().any(|run| run.status == "Recovering")
             })
             .unwrap();
-        if done { break; }
+        if done {
+            break;
+        }
         assert!(
             std::time::Instant::now() < deadline,
             "expired recovered regeneration did not terminate"
@@ -1604,14 +1848,26 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         (
             a.store.occurrence(occurrence).unwrap().final_run_id,
             a.store.occurrence(occurrence).unwrap().status,
-            a.store.runs().iter().find(|run| run.id == source).map(|run| run.output.clone()),
-            a.store.runs().iter().find(|run| run.id == regen_id).map(|run| run.output.clone()),
+            a.store
+                .runs()
+                .iter()
+                .find(|run| run.id == source)
+                .map(|run| run.output.clone()),
+            a.store
+                .runs()
+                .iter()
+                .find(|run| run.id == regen_id)
+                .map(|run| run.output.clone()),
         )
     });
     assert_eq!(final_run, Some(source));
     assert_eq!(status, OccurrenceStatus::Succeeded);
     assert_eq!(source_after.as_deref(), Some(source_output.as_str()));
-    assert!(!regen_output.unwrap_or_default().contains("LATE REGENERATION"));
+    assert!(
+        !regen_output
+            .unwrap_or_default()
+            .contains("LATE REGENERATION")
+    );
     println!("regeneration recovery chain passed (late result discarded, slot released)");
 }
 
@@ -1662,16 +1918,20 @@ fn entry_route_check(root: &Path) {
         })
         .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.occurrence(occurrence).unwrap().status),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .occurrence(occurrence)
+            .unwrap()
+            .status),
         OccurrenceStatus::Succeeded
     );
     assert!(read_state(&mut cx, &app, |a| a
         .automation_fake
         .as_ref()
         .is_some_and(|runner| runner.starts.len() == 1)));
-    assert!(read_state(&mut cx, &app, |a| a.store.runs().iter().all(|run| {
-        run.task_id != task || run.automation_occurrence_id == Some(occurrence)
-    })));
+    assert!(read_state(&mut cx, &app, |a| a.store.runs().iter().all(
+        |run| { run.task_id != task || run.automation_occurrence_id == Some(occurrence) }
+    )));
     println!("step entry routing passed (ordinary entry routes through the occurrence)");
 }
 
@@ -1694,10 +1954,7 @@ struct DispatchUiState {
     automation_scroll: gpui_kit::Point<gpui_kit::Pixels>,
 }
 
-fn dispatch_ui_state(
-    cx: &mut HeadlessAppContext,
-    app: &Entity<TaskApp>,
-) -> DispatchUiState {
+fn dispatch_ui_state(cx: &mut HeadlessAppContext, app: &Entity<TaskApp>) -> DispatchUiState {
     cx.update(|cx| {
         let a = app.read(cx);
         DispatchUiState {
@@ -1744,9 +2001,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         let mut store = model_store(&project);
         store.set_opencode_path(cli.to_string_lossy().into());
         store.set_default_model("fixture/automation".into());
-        store.research_config_mut().models =
-            ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
-                .map(String::from);
+        store.research_config_mut().models = [
+            "fixture/plan",
+            "fixture/collect",
+            "fixture/analyze",
+            "fixture/advise",
+        ]
+        .map(String::from);
         let id = draft(&mut store, &format!("Dispatch boundary {surface}"));
         enable(&mut store, id);
 
@@ -1776,7 +2037,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         store.stop_occurrence(history.id, now() - 110).unwrap();
 
         let stamp = now();
-        store.automation_mut(id).unwrap().policy.allowed_delay_seconds = 1;
+        store
+            .automation_mut(id)
+            .unwrap()
+            .policy
+            .allowed_delay_seconds = 1;
         store.automation_mut(id).unwrap().policy.timeout_seconds = 120;
         store.automation_mut(id).unwrap().anchor = Some(stamp - 600);
         store.automation_mut(id).unwrap().cursor = Some(stamp);
@@ -1847,9 +2112,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         })
         .unwrap();
         let before = dispatch_ui_state(&mut cx, &app);
-        let focus_before = cx
-            .update_window(handle, |_, w, cx| w.focused(cx))
-            .unwrap();
+        let focus_before = cx.update_window(handle, |_, w, cx| w.focused(cx)).unwrap();
 
         cx.update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| a.poll_automations(cx));
@@ -1885,8 +2148,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                 "background dispatch changed the visible state from {surface}"
             );
             assert_eq!(
-                cx.update_window(handle, |_, w, cx| w.focused(cx))
-                    .unwrap(),
+                cx.update_window(handle, |_, w, cx| w.focused(cx)).unwrap(),
                 focus_before,
                 "background dispatch moved focus from {surface}"
             );
@@ -1901,10 +2163,18 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         }
         let (status, run_ids, goal) = read_state(&mut cx, &app, |a| {
             let occurrence = a.store.occurrence(occurrence).unwrap();
-            (occurrence.status, occurrence.run_ids.clone(), occurrence.research_goal_id)
+            (
+                occurrence.status,
+                occurrence.run_ids.clone(),
+                occurrence.research_goal_id,
+            )
         });
         assert_eq!(status, OccurrenceStatus::Succeeded);
-        assert_eq!(run_ids.len(), 3, "two subsequent steps must run: {run_ids:?}");
+        assert_eq!(
+            run_ids.len(),
+            3,
+            "two subsequent steps must run: {run_ids:?}"
+        );
         // Explicit View progress opens the period that owns the step.
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| {
@@ -1966,7 +2236,9 @@ fn retry_scope_check(root: &Path) {
     let collect = first.task_id;
     store.push_run(first);
     store.set_stage(collect, Stage::Done).unwrap();
-    let mut second = store.prepare_occurrence_run(&occurrence, stamp + 10).unwrap();
+    let mut second = store
+        .prepare_occurrence_run(&occurrence, stamp + 10)
+        .unwrap();
     second.status = "Failed".into();
     store.push_run(second);
     store
@@ -1975,11 +2247,9 @@ fn retry_scope_check(root: &Path) {
     store.pause_automation(id, stamp + 30).unwrap();
     // A later edit moves the definition to a new Draft version. The historical
     // period still retries with its own approved snapshot.
-    let revised = crate::automation_execution::build_template(
-        "Revised objective",
-        "A revised result",
-    )
-    .unwrap();
+    let revised =
+        crate::automation_execution::build_template("Revised objective", "A revised result")
+            .unwrap();
     store
         .revise_automation(
             id,
@@ -2060,11 +2330,12 @@ fn retry_scope_check(root: &Path) {
         );
         w.click("resume-automation-steps", cx);
         w.render_frame(cx);
-        assert_eq!(app.read(cx).scope(), Scope::Automations, "retry stays in its period");
         assert_eq!(
-            app.read(cx).period_overlay(),
-            Some(occurrence.id)
+            app.read(cx).scope(),
+            Scope::Automations,
+            "retry stays in its period"
         );
+        assert_eq!(app.read(cx).period_overlay(), Some(occurrence.id));
     })
     .unwrap();
     let (definition, reopened, collect_stage, runs) = read_state(&mut cx, &app, |a| {
@@ -2099,8 +2370,7 @@ fn retry_scope_check(root: &Path) {
     assert_eq!(reopened.research_goal_id, Some(goal));
     assert_eq!(reopened.status, OccurrenceStatus::Succeeded);
     assert_eq!(
-        runs,
-        4,
+        runs, 4,
         "the retry continues the same period instead of duplicating it"
     );
     assert!(read_state(&mut cx, &app, |a| a
@@ -2111,14 +2381,16 @@ fn retry_scope_check(root: &Path) {
         .count()
         == 1));
     screenshot(&mut cx, handle, &directory, "retry-scope.png");
-    println!("period retry scope passed (edited definition unchanged, same period and original snapshot)");
+    println!(
+        "period retry scope passed (edited definition unchanged, same period and original snapshot)"
+    );
 }
 
 fn activity_order_check(root: &Path) {
     use crate::automation::{
         AutomationOccurrence, AutomationOccurrenceSnapshot, TimeWindow, TriggerSource,
     };
-    use crate::automation_activity::{compare_newest_first, occurrence_activity, ActivityKind};
+    use crate::automation_activity::{ActivityKind, compare_newest_first, occurrence_activity};
 
     let directory = root.join("activity-order");
     std::fs::create_dir_all(&directory).unwrap();
@@ -2162,8 +2434,14 @@ fn activity_order_check(root: &Path) {
     let reopened = store.occurrence(old.id).unwrap();
     assert_eq!(reopened.status, OccurrenceStatus::Queued);
     assert_eq!(reopened.retry_requested_at, Some(retry_at));
-    assert_eq!(reopened.reference_time, old_reference, "retry keeps the reference");
-    assert_eq!(reopened.data_window, old_window, "retry keeps the data window");
+    assert_eq!(
+        reopened.reference_time, old_reference,
+        "retry keeps the reference"
+    );
+    assert_eq!(
+        reopened.data_window, old_window,
+        "retry keeps the data window"
+    );
     // Freeze the render fixture with no active periods. Recovery enqueues every
     // active Queued occurrence on attach; cancelling after the retry assertions
     // keeps both records historical while preserving the retry timestamp.
@@ -2218,7 +2496,10 @@ fn activity_order_check(root: &Path) {
         .unwrap();
 
     let latest = crate::automation_views::latest_occurrence(&store, id).unwrap();
-    assert_eq!(latest.id, old.id, "the older-ID retry is the latest activity");
+    assert_eq!(
+        latest.id, old.id,
+        "the older-ID retry is the latest activity"
+    );
     let activity = occurrence_activity(latest);
     assert_eq!(activity.kind, ActivityKind::RetryRequested);
     assert_eq!(activity.utc, retry_at);
@@ -2229,7 +2510,10 @@ fn activity_order_check(root: &Path) {
         .collect();
     ordered.sort_by(|a, b| compare_newest_first(a, b));
     assert_eq!(
-        ordered.iter().map(|occurrence| occurrence.id).collect::<Vec<_>>(),
+        ordered
+            .iter()
+            .map(|occurrence| occurrence.id)
+            .collect::<Vec<_>>(),
         vec![old.id, newer.id, scheduled_id],
         "retry, then the later start, then the unstarted scheduled trigger"
     );
@@ -2331,7 +2615,11 @@ fn activity_order_check(root: &Path) {
             cx.notify();
         });
         w.render_frame(cx);
-        let old_y = w.find(format!("open-occurrence-{}", old.id)).bounds().origin.y;
+        let old_y = w
+            .find(format!("open-occurrence-{}", old.id))
+            .bounds()
+            .origin
+            .y;
         let newer_y = w
             .find(format!("open-occurrence-{}", newer.id))
             .bounds()
@@ -2345,7 +2633,8 @@ fn activity_order_check(root: &Path) {
         assert!(old_y < newer_y, "the retried period leads detail history");
         assert!(newer_y < scheduled_y, "started periods lead unstarted ones");
         assert!(
-            w.try_find(format!("occurrence-activity-{}", old.id)).is_some(),
+            w.try_find(format!("occurrence-activity-{}", old.id))
+                .is_some(),
             "each row renders its activity timestamp"
         );
     })
@@ -2360,7 +2649,11 @@ fn activity_order_check(root: &Path) {
             cx.notify();
         });
         w.render_frame(cx);
-        let old_y = w.find(format!("open-occurrence-{}", old.id)).bounds().origin.y;
+        let old_y = w
+            .find(format!("open-occurrence-{}", old.id))
+            .bounds()
+            .origin
+            .y;
         let newer_y = w
             .find(format!("open-occurrence-{}", newer.id))
             .bounds()
@@ -2374,15 +2667,17 @@ fn activity_order_check(root: &Path) {
         assert!(old_y < newer_y, "the retried period leads global results");
         assert!(newer_y < scheduled_y);
         assert!(
-            w.try_find(format!("occurrence-activity-{}", old.id)).is_some(),
+            w.try_find(format!("occurrence-activity-{}", old.id))
+                .is_some(),
             "global results render the same activity timestamp"
         );
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "activity-order-results.png");
     assert_eq!(
-        read_state(&mut cx, &app, |a| crate::automation_views::latest_occurrence(&a.store, id)
-            .map(|occurrence| occurrence.id)),
+        read_state(&mut cx, &app, |a| {
+            crate::automation_views::latest_occurrence(&a.store, id).map(|occurrence| occurrence.id)
+        }),
         Some(old.id)
     );
     println!("activity order passed (older-ID retry is latest in list, history and results walls)");
@@ -2411,9 +2706,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let mut store = model_store(&project);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/ordinary".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
-            .map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let goal = store
         .create_research_goal(
             "Ordinary continuation".into(),
@@ -2483,9 +2782,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     cx.update_window(handle, |_, w, cx| w.render_frame(cx))
         .unwrap();
     let before = dispatch_ui_state(&mut cx, &app);
-    let focus_before = cx
-        .update_window(handle, |_, w, cx| w.focused(cx))
-        .unwrap();
+    let focus_before = cx.update_window(handle, |_, w, cx| w.focused(cx)).unwrap();
     assert!(
         before.detail_scroll.y < px(0.) && before.result_scroll.y < px(0.),
         "fixture must start with nonzero scroll offsets: {:?}",
@@ -2517,8 +2814,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             "ordinary batch continuation changed the visible state"
         );
         assert_eq!(
-            cx.update_window(handle, |_, w, cx| w.focused(cx))
-                .unwrap(),
+            cx.update_window(handle, |_, w, cx| w.focused(cx)).unwrap(),
             focus_before,
             "ordinary batch continuation moved focus"
         );
@@ -2536,7 +2832,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             .store
             .runs()
             .iter()
-            .filter(|run| run.task_id == steps[0] || run.task_id == steps[1] || run.task_id == steps[2])
+            .filter(|run| run.task_id == steps[0]
+                || run.task_id == steps[1]
+                || run.task_id == steps[2])
             .filter(|run| run.status == "Succeeded")
             .count()),
         3,
@@ -2551,9 +2849,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     })
     .unwrap();
     let before_retry = dispatch_ui_state(&mut cx, &app);
-    let focus_before_retry = cx
-        .update_window(handle, |_, w, cx| w.focused(cx))
-        .unwrap();
+    let focus_before_retry = cx.update_window(handle, |_, w, cx| w.focused(cx)).unwrap();
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| a.complete_research_run(failed_id, cx));
     })
@@ -2578,8 +2874,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         "failure auto-retry changed the visible state"
     );
     assert_eq!(
-        cx.update_window(handle, |_, w, cx| w.focused(cx))
-            .unwrap(),
+        cx.update_window(handle, |_, w, cx| w.focused(cx)).unwrap(),
         focus_before_retry,
         "failure auto-retry moved focus"
     );
@@ -2587,7 +2882,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         app.update(cx, |a, cx| a.cancel_run_id(retry_id, cx));
     })
     .unwrap();
-    println!("ordinary background dispatch passed (batch continuation and failure retry stay passive)");
+    println!(
+        "ordinary background dispatch passed (batch continuation and failure retry stay passive)"
+    );
 }
 
 /// A completed plan run stores its generated tasks without navigating. The user
@@ -2599,9 +2896,13 @@ fn completion_boundary_check(root: &Path) {
             std::fs::create_dir_all(&directory).unwrap();
             let mut store = model_store(&directory);
             store.set_default_model("fixture/plan".into());
-            store.research_config_mut().models =
-                ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
-                    .map(String::from);
+            store.research_config_mut().models = [
+                "fixture/plan",
+                "fixture/collect",
+                "fixture/analyze",
+                "fixture/advise",
+            ]
+            .map(String::from);
             store.project_at_mut(0).unwrap().research_brief =
                 "Cover the global market and the next twelve months.".into();
             let target = if kind == "goal-plan" {
@@ -2670,9 +2971,7 @@ fn completion_boundary_check(root: &Path) {
             })
             .unwrap();
             let before = dispatch_ui_state(&mut cx, &app);
-            let focus_before = cx
-                .update_window(handle, |_, w, cx| w.focused(cx))
-                .unwrap();
+            let focus_before = cx.update_window(handle, |_, w, cx| w.focused(cx)).unwrap();
             cx.update_window(handle, |_, _, cx| {
                 app.update(cx, |a, cx| a.complete_research_run(run_id, cx));
             })
@@ -2683,8 +2982,7 @@ fn completion_boundary_check(root: &Path) {
                 "{kind} completion changed the visible state from {route}"
             );
             assert_eq!(
-                cx.update_window(handle, |_, w, cx| w.focused(cx))
-                    .unwrap(),
+                cx.update_window(handle, |_, w, cx| w.focused(cx)).unwrap(),
                 focus_before,
                 "{kind} completion moved focus"
             );
@@ -2744,8 +3042,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let mut store = model_store(&project);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/automation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let schedule = crate::automation_schedule::Schedule {
         spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 60 },
         timezone: "Asia/Shanghai".into(),
@@ -2853,7 +3156,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         .unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(40);
     loop {
-        let(status1, status2) = cx
+        let (status1, status2) = cx
             .update_window(handle, |_, w, cx| {
                 app.update(cx, |a, cx| a.poll_runtime(cx));
                 w.render_frame(cx);
@@ -2875,11 +3178,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         );
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert!(read_state(&mut cx, &app, |a| a
-        .store
-        .goal_tasks_complete(
-            a.store.occurrence(first).unwrap().research_goal_id.unwrap()
-        )));
+    assert!(read_state(&mut cx, &app, |a| a.store.goal_tasks_complete(
+        a.store.occurrence(first).unwrap().research_goal_id.unwrap()
+    )));
     let (first_end, second_start) = read_state(&mut cx, &app, |a| {
         let first_occurrence = a.store.occurrence(first).unwrap();
         let second_occurrence = a.store.occurrence(second).unwrap();
@@ -2922,7 +3223,7 @@ fn pool_research_goal(store: &mut Store, topic: u64, title: &str) -> u64 {
         .as_mut()
         .unwrap()
         .requires_approval = true;
-    store.set_stage(id, Stage::Planned).unwrap();
+    store.set_stage(id, Stage::InProgress).unwrap();
     id
 }
 
@@ -2953,8 +3254,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     let mut store = model_store(&project);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/automation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     store.set_max_concurrent_runs(1);
     store.set_max_concurrent_automations(1);
     let topic = store.create_topic(1, "Pool research").unwrap();
@@ -3006,10 +3312,7 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
         .map(|id| {
             let key = format!("manual:{id}:pool-{id}");
             read_state(&mut cx, &app, |a| {
-                a.store
-                    .automation_occurrence_by_key(&key)
-                    .unwrap()
-                    .id
+                a.store.automation_occurrence_by_key(&key).unwrap().id
             })
         })
         .collect();
@@ -3025,7 +3328,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
             if finished {
                 return;
             }
-            assert!(std::time::Instant::now() < deadline, "pool check timed out: {label}");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "pool check timed out: {label}"
+            );
             std::thread::sleep(Duration::from_millis(20));
         }
     };
@@ -3043,14 +3349,27 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
                         .runs()
                         .iter()
                         .find(|run| run.id == active.id)
-                        .map(|run| (run.id, run.task_id, run.status.clone(), run.automation_occurrence_id))
+                        .map(|run| {
+                            (
+                                run.id,
+                                run.task_id,
+                                run.status.clone(),
+                                run.automation_occurrence_id,
+                            )
+                        })
                         .unwrap_or((active.id, 0, "missing".into(), None))
                 })
                 .collect::<Vec<_>>(),
             a.store
                 .all_occurrences()
                 .iter()
-                .map(|occurrence| (occurrence.id, occurrence.status, occurrence.trigger_key.clone()))
+                .map(|occurrence| {
+                    (
+                        occurrence.id,
+                        occurrence.status,
+                        occurrence.trigger_key.clone(),
+                    )
+                })
                 .collect::<Vec<_>>(),
         )
     });
@@ -3062,7 +3381,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
 
     // A full research pool must not prevent an automation period from starting.
     cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |a, cx| a.enqueue_automation_occurrence(occurrences[0], cx));
+        app.update(cx, |a, cx| {
+            a.enqueue_automation_occurrence(occurrences[0], cx)
+        });
     })
     .unwrap();
     wait_for(&mut cx, "automation A running alongside research", &|a| {
@@ -3073,7 +3394,9 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     // The automation pool is full: a second automation period waits without
     // touching the queued research goal.
     cx.update_window(handle, |_, _, cx| {
-        app.update(cx, |a, cx| a.enqueue_automation_occurrence(occurrences[1], cx));
+        app.update(cx, |a, cx| {
+            a.enqueue_automation_occurrence(occurrences[1], cx)
+        });
     })
     .unwrap();
     wait_for(&mut cx, "automation B queued", &|a| {
@@ -3133,7 +3456,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'status':'complete','
     })
     .unwrap();
     std::thread::sleep(Duration::from_millis(120));
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     println!("independent pools passed (research and automation limits do not overlap)");
 }
 
@@ -3143,7 +3467,7 @@ fn undo_protection_check(root: &Path) {
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(&directory);
     let task = store
-        .create_task("Ordinary task", 1, Stage::Planned, None)
+        .create_task("Ordinary task", 1, Stage::InProgress, None)
         .unwrap();
     let paused = draft(&mut store, "Undo pause guard");
     enable(&mut store, paused);
@@ -3177,8 +3501,8 @@ fn undo_protection_check(root: &Path) {
     // stays undoable and cannot roll back schedule state.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            assert!(a
-                .apply_domain_command_undoable(
+            assert!(
+                a.apply_domain_command_undoable(
                     crate::scoped_domain::DomainCommand::TaskTitle {
                         task,
                         title: "Ordinary edit one".into(),
@@ -3186,7 +3510,8 @@ fn undo_protection_check(root: &Path) {
                     "Task renamed",
                     cx,
                 )
-                .is_some());
+                .is_some()
+            );
             assert_eq!(a.undo.len(), 1, "a scoped edit is undoable");
         });
         app.update(cx, |a, cx| a.pause_automation_ui(paused, cx));
@@ -3213,15 +3538,47 @@ fn undo_protection_check(root: &Path) {
             let runs = a.store.runs().to_vec();
             let ids = (a.store.next_id(), a.store.run_id_floor());
             a.undo_change(w, cx);
-            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
-            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
-            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
-            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            assert_eq!(
+                a.store.automations(),
+                definitions.as_slice(),
+                "Undo preserves full definitions"
+            );
+            assert_eq!(
+                a.store.all_occurrences(),
+                occurrences.as_slice(),
+                "Undo preserves full periods and keys"
+            );
+            assert_eq!(
+                a.store.runs(),
+                runs.as_slice(),
+                "Undo preserves full runtime history"
+            );
+            assert_eq!(
+                (a.store.next_id(), a.store.run_id_floor()),
+                ids,
+                "Undo preserves identity floors"
+            );
             let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
-            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
-            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
-            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
-            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+            assert_eq!(
+                disk.automations(),
+                definitions.as_slice(),
+                "Durable definitions survive Undo"
+            );
+            assert_eq!(
+                disk.all_occurrences(),
+                occurrences.as_slice(),
+                "Durable periods and keys survive Undo"
+            );
+            assert_eq!(
+                disk.runs(),
+                runs.as_slice(),
+                "Durable runtime history survives Undo"
+            );
+            assert_eq!(
+                (disk.next_id(), disk.run_id_floor()),
+                ids,
+                "Durable identity floors survive Undo"
+            );
         });
     })
     .unwrap();
@@ -3238,8 +3595,8 @@ fn undo_protection_check(root: &Path) {
     // disturb the paused definition.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            assert!(a
-                .apply_domain_command_undoable(
+            assert!(
+                a.apply_domain_command_undoable(
                     crate::scoped_domain::DomainCommand::TaskTitle {
                         task,
                         title: "Ordinary edit two".into(),
@@ -3247,24 +3604,57 @@ fn undo_protection_check(root: &Path) {
                     "Task renamed",
                     cx,
                 )
-                .is_some());
+                .is_some()
+            );
             assert!(a.undo_invalidation.is_none(), "no legacy barrier remains");
-{
-            let definitions = a.store.automations().to_vec();
-            let occurrences = a.store.all_occurrences().to_vec();
-            let runs = a.store.runs().to_vec();
-            let ids = (a.store.next_id(), a.store.run_id_floor());
-            a.undo_change(w, cx);
-            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
-            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
-            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
-            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
-            let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
-            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
-            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
-            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
-            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
-        };
+            {
+                let definitions = a.store.automations().to_vec();
+                let occurrences = a.store.all_occurrences().to_vec();
+                let runs = a.store.runs().to_vec();
+                let ids = (a.store.next_id(), a.store.run_id_floor());
+                a.undo_change(w, cx);
+                assert_eq!(
+                    a.store.automations(),
+                    definitions.as_slice(),
+                    "Undo preserves full definitions"
+                );
+                assert_eq!(
+                    a.store.all_occurrences(),
+                    occurrences.as_slice(),
+                    "Undo preserves full periods and keys"
+                );
+                assert_eq!(
+                    a.store.runs(),
+                    runs.as_slice(),
+                    "Undo preserves full runtime history"
+                );
+                assert_eq!(
+                    (a.store.next_id(), a.store.run_id_floor()),
+                    ids,
+                    "Undo preserves identity floors"
+                );
+                let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
+                assert_eq!(
+                    disk.automations(),
+                    definitions.as_slice(),
+                    "Durable definitions survive Undo"
+                );
+                assert_eq!(
+                    disk.all_occurrences(),
+                    occurrences.as_slice(),
+                    "Durable periods and keys survive Undo"
+                );
+                assert_eq!(
+                    disk.runs(),
+                    runs.as_slice(),
+                    "Durable runtime history survives Undo"
+                );
+                assert_eq!(
+                    (disk.next_id(), disk.run_id_floor()),
+                    ids,
+                    "Durable identity floors survive Undo"
+                );
+            };
         });
     })
     .unwrap();
@@ -3285,8 +3675,8 @@ fn undo_protection_check(root: &Path) {
     let occurrence_id = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
-                assert!(a
-                    .apply_domain_command_undoable(
+                assert!(
+                    a.apply_domain_command_undoable(
                         crate::scoped_domain::DomainCommand::TaskTitle {
                             task,
                             title: "Ordinary edit four".into(),
@@ -3294,7 +3684,8 @@ fn undo_protection_check(root: &Path) {
                         "Task renamed",
                         cx,
                     )
-                    .is_some());
+                    .is_some()
+                );
                 // Resume the paused schedule before planning its next tick.
                 a.store.resume_schedule(paused, now).unwrap();
                 {
@@ -3305,8 +3696,15 @@ fn undo_protection_check(root: &Path) {
                 let plans = a.store.plan_automation_ticks(now);
                 assert!(!plans.is_empty(), "the due schedule produces a tick");
                 let commit = a.store.commit_automation_tick(&plans[0], now).unwrap();
-                let occurrence = commit.queued.first().copied().or_else(|| commit.skipped.first().copied());
-                assert!(occurrence.is_some(), "the tick creates or skips an occurrence");
+                let occurrence = commit
+                    .queued
+                    .first()
+                    .copied()
+                    .or_else(|| commit.skipped.first().copied());
+                assert!(
+                    occurrence.is_some(),
+                    "the tick creates or skips an occurrence"
+                );
                 a.persist_if_changed(true);
                 assert_eq!(a.undo.len(), 1, "the tick records no undo entry");
                 assert!(a.undo_invalidation.is_none());
@@ -3327,7 +3725,10 @@ fn undo_protection_check(root: &Path) {
     });
     assert_eq!(occurrences, 1);
     assert!(
-        read_state(&mut cx, &app, |a| a.store.occurrence(occurrence_id).is_some()),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .occurrence(occurrence_id)
+            .is_some()),
         "the committed occurrence is retained"
     );
     assert!(cursor.is_some_and(|cursor| cursor > now), "cursor advanced");
@@ -3339,15 +3740,47 @@ fn undo_protection_check(root: &Path) {
             let runs = a.store.runs().to_vec();
             let ids = (a.store.next_id(), a.store.run_id_floor());
             a.undo_change(w, cx);
-            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
-            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
-            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
-            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            assert_eq!(
+                a.store.automations(),
+                definitions.as_slice(),
+                "Undo preserves full definitions"
+            );
+            assert_eq!(
+                a.store.all_occurrences(),
+                occurrences.as_slice(),
+                "Undo preserves full periods and keys"
+            );
+            assert_eq!(
+                a.store.runs(),
+                runs.as_slice(),
+                "Undo preserves full runtime history"
+            );
+            assert_eq!(
+                (a.store.next_id(), a.store.run_id_floor()),
+                ids,
+                "Undo preserves identity floors"
+            );
             let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
-            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
-            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
-            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
-            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+            assert_eq!(
+                disk.automations(),
+                definitions.as_slice(),
+                "Durable definitions survive Undo"
+            );
+            assert_eq!(
+                disk.all_occurrences(),
+                occurrences.as_slice(),
+                "Durable periods and keys survive Undo"
+            );
+            assert_eq!(
+                disk.runs(),
+                runs.as_slice(),
+                "Durable runtime history survives Undo"
+            );
+            assert_eq!(
+                (disk.next_id(), disk.run_id_floor()),
+                ids,
+                "Durable identity floors survive Undo"
+            );
         });
     })
     .unwrap();
@@ -3364,14 +3797,17 @@ fn undo_protection_check(root: &Path) {
     });
     assert_eq!(title, "Ordinary task");
     assert_eq!(occurrences, 1, "Undo cannot delete the new occurrence");
-    assert!(cursor.is_some_and(|cursor| cursor > now), "Undo cannot restore the old cursor");
+    assert!(
+        cursor.is_some_and(|cursor| cursor > now),
+        "Undo cannot restore the old cursor"
+    );
 
     // A scoped edit followed by saving a new Quick draft: Undo restores only
     // the edit and cannot delete the draft.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            assert!(a
-                .apply_domain_command_undoable(
+            assert!(
+                a.apply_domain_command_undoable(
                     crate::scoped_domain::DomainCommand::TaskTitle {
                         task,
                         title: "Ordinary edit five".into(),
@@ -3379,7 +3815,8 @@ fn undo_protection_check(root: &Path) {
                     "Task renamed",
                     cx,
                 )
-                .is_some());
+                .is_some()
+            );
             a.start_automation_create(w, cx);
             a.automation_ui.objective.update(cx, |state, cx| {
                 state.set_value("Check fuel prices every day and cite a source.", w, cx);
@@ -3406,15 +3843,47 @@ fn undo_protection_check(root: &Path) {
             let runs = a.store.runs().to_vec();
             let ids = (a.store.next_id(), a.store.run_id_floor());
             a.undo_change(w, cx);
-            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
-            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
-            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
-            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            assert_eq!(
+                a.store.automations(),
+                definitions.as_slice(),
+                "Undo preserves full definitions"
+            );
+            assert_eq!(
+                a.store.all_occurrences(),
+                occurrences.as_slice(),
+                "Undo preserves full periods and keys"
+            );
+            assert_eq!(
+                a.store.runs(),
+                runs.as_slice(),
+                "Undo preserves full runtime history"
+            );
+            assert_eq!(
+                (a.store.next_id(), a.store.run_id_floor()),
+                ids,
+                "Undo preserves identity floors"
+            );
             let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
-            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
-            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
-            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
-            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+            assert_eq!(
+                disk.automations(),
+                definitions.as_slice(),
+                "Durable definitions survive Undo"
+            );
+            assert_eq!(
+                disk.all_occurrences(),
+                occurrences.as_slice(),
+                "Durable periods and keys survive Undo"
+            );
+            assert_eq!(
+                disk.runs(),
+                runs.as_slice(),
+                "Durable runtime history survives Undo"
+            );
+            assert_eq!(
+                (disk.next_id(), disk.run_id_floor()),
+                ids,
+                "Durable identity floors survive Undo"
+            );
         });
     })
     .unwrap();
@@ -3431,8 +3900,8 @@ fn undo_protection_check(root: &Path) {
     // and cannot disable the automation again.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
-            assert!(a
-                .apply_domain_command_undoable(
+            assert!(
+                a.apply_domain_command_undoable(
                     crate::scoped_domain::DomainCommand::TaskTitle {
                         task,
                         title: "Ordinary edit six".into(),
@@ -3440,7 +3909,8 @@ fn undo_protection_check(root: &Path) {
                     "Task renamed",
                     cx,
                 )
-                .is_some());
+                .is_some()
+            );
             a.edit_automation(draft_id, w, cx);
             a.enable_automation(cx);
         });
@@ -3467,20 +3937,56 @@ fn undo_protection_check(root: &Path) {
             let runs = a.store.runs().to_vec();
             let ids = (a.store.next_id(), a.store.run_id_floor());
             a.undo_change(w, cx);
-            assert_eq!(a.store.automations(), definitions.as_slice(), "Undo preserves full definitions");
-            assert_eq!(a.store.all_occurrences(), occurrences.as_slice(), "Undo preserves full periods and keys");
-            assert_eq!(a.store.runs(), runs.as_slice(), "Undo preserves full runtime history");
-            assert_eq!((a.store.next_id(), a.store.run_id_floor()), ids, "Undo preserves identity floors");
+            assert_eq!(
+                a.store.automations(),
+                definitions.as_slice(),
+                "Undo preserves full definitions"
+            );
+            assert_eq!(
+                a.store.all_occurrences(),
+                occurrences.as_slice(),
+                "Undo preserves full periods and keys"
+            );
+            assert_eq!(
+                a.store.runs(),
+                runs.as_slice(),
+                "Undo preserves full runtime history"
+            );
+            assert_eq!(
+                (a.store.next_id(), a.store.run_id_floor()),
+                ids,
+                "Undo preserves identity floors"
+            );
             let disk = a.storage.as_ref().unwrap().load().unwrap().unwrap();
-            assert_eq!(disk.automations(), definitions.as_slice(), "Durable definitions survive Undo");
-            assert_eq!(disk.all_occurrences(), occurrences.as_slice(), "Durable periods and keys survive Undo");
-            assert_eq!(disk.runs(), runs.as_slice(), "Durable runtime history survives Undo");
-            assert_eq!((disk.next_id(), disk.run_id_floor()), ids, "Durable identity floors survive Undo");
+            assert_eq!(
+                disk.automations(),
+                definitions.as_slice(),
+                "Durable definitions survive Undo"
+            );
+            assert_eq!(
+                disk.all_occurrences(),
+                occurrences.as_slice(),
+                "Durable periods and keys survive Undo"
+            );
+            assert_eq!(
+                disk.runs(),
+                runs.as_slice(),
+                "Durable runtime history survives Undo"
+            );
+            assert_eq!(
+                (disk.next_id(), disk.run_id_floor()),
+                ids,
+                "Durable identity floors survive Undo"
+            );
         });
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.automation(draft_id).unwrap().status),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .automation(draft_id)
+            .unwrap()
+            .status),
         DefinitionStatus::Enabled,
         "Undo cannot disable the newly enabled automation"
     );
@@ -3488,7 +3994,8 @@ fn undo_protection_check(root: &Path) {
         read_state(&mut cx, &app, |a| a.store.task(task).unwrap().title.clone()),
         "Ordinary task"
     );
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     println!("undo protection passed");
 }
 
@@ -3537,13 +4044,27 @@ fn draft_defaults_check(root: &Path) {
         w.click("automation-catchup-skip", cx);
         w.click("automation-day-6", cx);
         app.update(cx, |a, cx| {
-            a.automation_ui.hour.update(cx, |state, cx| state.set_value("07", w, cx));
-            a.automation_ui.minute.update(cx, |state, cx| state.set_value("45", w, cx));
-            a.automation_ui.timezone.update(cx, |state, cx| state.set_value("Europe/London", w, cx));
-            a.automation_ui.delay.update(cx, |state, cx| state.set_value("120", w, cx));
-            a.automation_ui.timeout.update(cx, |state, cx| state.set_value("45", w, cx));
-            a.automation_ui.failures.update(cx, |state, cx| state.set_value("5", w, cx));
-            a.automation_ui.retention.update(cx, |state, cx| state.set_value("60", w, cx));
+            a.automation_ui
+                .hour
+                .update(cx, |state, cx| state.set_value("07", w, cx));
+            a.automation_ui
+                .minute
+                .update(cx, |state, cx| state.set_value("45", w, cx));
+            a.automation_ui
+                .timezone
+                .update(cx, |state, cx| state.set_value("Europe/London", w, cx));
+            a.automation_ui
+                .delay
+                .update(cx, |state, cx| state.set_value("120", w, cx));
+            a.automation_ui
+                .timeout
+                .update(cx, |state, cx| state.set_value("45", w, cx));
+            a.automation_ui
+                .failures
+                .update(cx, |state, cx| state.set_value("5", w, cx));
+            a.automation_ui
+                .retention
+                .update(cx, |state, cx| state.set_value("60", w, cx));
             cx.notify();
         });
         w.render_frame(cx);
@@ -3567,7 +4088,10 @@ fn draft_defaults_check(root: &Path) {
         );
         assert_eq!(schedule.timezone, "Europe/London");
         let policy = ui.policy(cx).expect("retained policy");
-        assert_eq!(policy.catch_up, crate::automation_schedule::CatchUp::SkipAll);
+        assert_eq!(
+            policy.catch_up,
+            crate::automation_schedule::CatchUp::SkipAll
+        );
         assert_eq!(policy.allowed_delay_seconds, 120 * 60);
         assert_eq!(policy.timeout_seconds, 45 * 60);
         assert_eq!(policy.max_consecutive_failures, 5);
@@ -3592,7 +4116,9 @@ fn draft_defaults_check(root: &Path) {
         w.click("automation-unit-hours", cx);
         w.click("automation-catchup-skip", cx);
         app.update(cx, |a, cx| {
-            a.automation_ui.interval.update(cx, |state, cx| state.set_value("2", w, cx));
+            a.automation_ui
+                .interval
+                .update(cx, |state, cx| state.set_value("2", w, cx));
             cx.notify();
         });
         w.render_frame(cx);
@@ -3626,11 +4152,20 @@ fn draft_defaults_check(root: &Path) {
         let schedule = ui.schedule(cx).expect("default schedule");
         assert_eq!(
             schedule.spec,
-            crate::automation_schedule::ScheduleSpec::Daily { hour: 10, minute: 0 }
+            crate::automation_schedule::ScheduleSpec::Daily {
+                hour: 10,
+                minute: 0
+            }
         );
-        assert_eq!(schedule.timezone, crate::automation_views::system_timezone());
+        assert_eq!(
+            schedule.timezone,
+            crate::automation_views::system_timezone()
+        );
         let policy = ui.policy(cx).expect("default policy");
-        assert_eq!(policy.catch_up, crate::automation_schedule::CatchUp::LatestOnly);
+        assert_eq!(
+            policy.catch_up,
+            crate::automation_schedule::CatchUp::LatestOnly
+        );
         assert_eq!(policy.allowed_delay_seconds, 24 * 60 * 60);
         assert_eq!(policy.timeout_seconds, 60 * 60);
         assert_eq!(policy.max_consecutive_failures, 3);
@@ -3642,9 +4177,13 @@ fn draft_defaults_check(root: &Path) {
         assert_eq!(ui.timeout.read(cx).value().to_string(), "60");
         assert_eq!(ui.failures.read(cx).value().to_string(), "3");
         assert_eq!(ui.retention.read(cx).value().to_string(), "30");
-        assert_eq!(ui.timezone.read(cx).value().to_string(), crate::automation_views::system_timezone());
+        assert_eq!(
+            ui.timezone.read(cx).value().to_string(),
+            crate::automation_views::system_timezone()
+        );
     });
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     println!("draft defaults passed");
 }
 
@@ -3685,7 +4224,11 @@ fn shape_switch_check(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert_eq!(
-            app.read(cx).automation_ui.plan.as_ref().map(|plan| plan.goals.len()),
+            app.read(cx)
+                .automation_ui
+                .plan
+                .as_ref()
+                .map(|plan| plan.goals.len()),
             Some(before.template.as_ref().unwrap().goals.len()),
             "editing starts from the approved plan"
         );
@@ -3693,8 +4236,14 @@ fn shape_switch_check(root: &Path) {
         w.render_frame(cx);
         {
             let a = app.read(cx);
-            assert_eq!(a.automation_ui.shape, crate::automation::AutomationShape::Quick);
-            assert!(a.automation_ui.plan.is_none(), "the research plan is discarded");
+            assert_eq!(
+                a.automation_ui.shape,
+                crate::automation::AutomationShape::Quick
+            );
+            assert!(
+                a.automation_ui.plan.is_none(),
+                "the research plan is discarded"
+            );
             assert!(a.automation_ui.planning_automation.is_none());
             assert_eq!(
                 a.store.automation(id).unwrap().approval,
@@ -3717,16 +4266,22 @@ fn shape_switch_check(root: &Path) {
     let after = read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().clone());
     assert_eq!(after.version, before.version + 1);
     assert_eq!(after.status, DefinitionStatus::Draft);
-    assert!(after.approval.is_none(), "the incompatible approval is cleared");
+    assert!(
+        after.approval.is_none(),
+        "the incompatible approval is cleared"
+    );
     assert_eq!(after.shape, crate::automation::AutomationShape::Quick);
     assert!(
-        after
-            .template
-            .as_ref()
-            .is_some_and(|template| template.goals.iter().map(|goal| goal.steps.len()).sum::<usize>() == 1),
+        after.template.as_ref().is_some_and(|template| template
+            .goals
+            .iter()
+            .map(|goal| goal.steps.len())
+            .sum::<usize>()
+            == 1),
         "a Quick draft carries its single answer step"
     );
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     println!("shape switch invalidation passed");
 }
 
@@ -3736,8 +4291,13 @@ fn planning_revision_completion_check(root: &Path) {
     std::fs::create_dir_all(directory.join("automations")).unwrap();
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(&directory);
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let automation_project = store
         .ensure_automation_project(directory.join("automations").to_string_lossy().into())
         .unwrap();
@@ -3801,11 +4361,23 @@ fn planning_revision_completion_check(root: &Path) {
     let app = app.unwrap();
     let handle: AnyWindowHandle = window.into();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.runs().iter().find(|run| run.id == first_id).unwrap().status.clone()),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .runs()
+            .iter()
+            .find(|run| run.id == first_id)
+            .unwrap()
+            .status
+            .clone()),
         "Stale",
         "an older same-input attempt cannot overwrite the newer one"
     );
-    assert!(read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().template.is_none()));
+    assert!(read_state(&mut cx, &app, |a| a
+        .store
+        .automation(id)
+        .unwrap()
+        .template
+        .is_none()));
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.automation_ui.expected.update(cx, |state, cx| {
@@ -3815,7 +4387,10 @@ fn planning_revision_completion_check(root: &Path) {
         });
     })
     .unwrap();
-    assert!(read_state(&mut cx, &app, |a| a.automation_ui.plan.is_none()));
+    assert!(read_state(&mut cx, &app, |a| a
+        .automation_ui
+        .plan
+        .is_none()));
     let (objective_after, expected_after) = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
@@ -3858,11 +4433,17 @@ fn planning_revision_completion_check(root: &Path) {
         })
         .unwrap();
     assert_eq!(binding_revision, 2);
-    let binding = read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().plan_binding.clone()).unwrap();
+    let binding = read_state(&mut cx, &app, |a| {
+        a.store.automation(id).unwrap().plan_binding.clone()
+    })
+    .unwrap();
     assert_eq!(binding.request_id, expected_only);
     assert_eq!(binding.revision, 2);
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
-    println!("planning revision completion passed (same-revision order, dirty draft, expected-only rebind)");
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+    println!(
+        "planning revision completion passed (same-revision order, dirty draft, expected-only rebind)"
+    );
 }
 
 fn wait_for_planning_run(
@@ -3901,31 +4482,53 @@ fn wait_for_planning_run(
     }
 }
 
-fn confirm_wizard_understanding(cx: &mut HeadlessAppContext, app: &Entity<TaskApp>, handle: AnyWindowHandle) {
+fn confirm_wizard_understanding(
+    cx: &mut HeadlessAppContext,
+    app: &Entity<TaskApp>,
+    handle: AnyWindowHandle,
+) {
     let request = read_state(cx, app, |a| {
-        a.store.latest_planning_request(a.automation_ui.editing.unwrap()).unwrap().id
+        a.store
+            .latest_planning_request(a.automation_ui.editing.unwrap())
+            .unwrap()
+            .id
     });
-    assert!(read_state(cx, app, |a| a.store.request_understanding_ready(request)));
-    assert!(!read_state(cx, app, |a| a.store.request_understanding_confirmed(request)));
+    assert!(read_state(cx, app, |a| a
+        .store
+        .request_understanding_ready(request)));
+    assert!(!read_state(cx, app, |a| a
+        .store
+        .request_understanding_confirmed(request)));
     cx.update_window(handle, |_, w, cx| {
         w.click(format!("understanding-confirm-{request}"), cx);
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     let run = loop {
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| a.poll_runtime(cx));
             w.render_frame(cx);
-        }).unwrap();
-        if let Some(run) = read_state(cx, app, |a| a.store.latest_request_attempt(request)
-            .filter(|run| !crate::request_planning::is_understanding_run(run)).map(|run| run.id)) {
+        })
+        .unwrap();
+        if let Some(run) = read_state(cx, app, |a| {
+            a.store
+                .latest_request_attempt(request)
+                .filter(|run| !crate::request_planning::is_understanding_run(run))
+                .map(|run| run.id)
+        }) {
             break run;
         }
-        assert!(std::time::Instant::now() < deadline, "confirmation did not start goal planning");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "confirmation did not start goal planning"
+        );
         std::thread::sleep(Duration::from_millis(10));
     };
     wait_for_planning_run(cx, app, handle, run);
-    assert!(read_state(cx, app, |a| a.store.request_understanding_confirmed(request)));
+    assert!(read_state(cx, app, |a| a
+        .store
+        .request_understanding_confirmed(request)));
 }
 
 fn latest_prompt(directory: &Path) -> String {
@@ -3969,8 +4572,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     let mut store = model_store(&directory);
     store.set_opencode_path(cli.to_string_lossy().into());
     store.set_default_model("fixture/plan".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     Storage::new(path.clone()).save(&store).unwrap();
 
     let mut cx = HeadlessAppContext::with_platform(
@@ -4012,21 +4620,41 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     let (automation, run_a) = read_state(&mut cx, &app, |a| {
         (
             a.automation_ui.editing.expect("wizard saved its draft"),
-            a.automation_ui.planning_run.expect("wizard started a planner"),
+            a.automation_ui
+                .planning_run
+                .expect("wizard started a planner"),
         )
     });
     wait_for_planning_run(&mut cx, &app, handle, run_a);
-    assert!(read_state(&mut cx, &app, |a| a.store.automation(automation).unwrap().template.is_none()));
+    assert!(read_state(&mut cx, &app, |a| a
+        .store
+        .automation(automation)
+        .unwrap()
+        .template
+        .is_none()));
     screenshot(&mut cx, handle, &directory, "understanding-light.png");
-    cx.update_window(handle, |_, w, cx| { w.click("toggle-appearance", cx); w.render_frame(cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("toggle-appearance", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
     screenshot(&mut cx, handle, &directory, "understanding-dark.png");
-    cx.update_window(handle, |_, w, cx| { w.click("toggle-appearance", cx); w.render_frame(cx); }).unwrap();
+    cx.update_window(handle, |_, w, cx| {
+        w.click("toggle-appearance", cx);
+        w.render_frame(cx);
+    })
+    .unwrap();
     confirm_wizard_understanding(&mut cx, &app, handle);
     let prompt = latest_prompt(&directory);
     assert!(prompt.contains("Objective A"));
     assert!(prompt.contains("Expected A"));
     assert!(prompt.contains("\"revision\":1"));
-    assert!(read_state(&mut cx, &app, |a| a.store.automation(automation).unwrap().plan_binding.is_some()));
+    assert!(read_state(&mut cx, &app, |a| a
+        .store
+        .automation(automation)
+        .unwrap()
+        .plan_binding
+        .is_some()));
     let request_a = read_state(&mut cx, &app, |a| {
         a.store.latest_planning_request(automation).unwrap().id
     });
@@ -4039,10 +4667,17 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         let definition = a.store.automation(automation).unwrap();
         (
             definition.status,
-            definition.approval.as_ref().map(|approval| (approval.plan_request_id, approval.plan_revision)),
+            definition
+                .approval
+                .as_ref()
+                .map(|approval| (approval.plan_request_id, approval.plan_revision)),
         )
     });
-    assert_eq!(status_a, DefinitionStatus::Enabled, "generated A must actually enable");
+    assert_eq!(
+        status_a,
+        DefinitionStatus::Enabled,
+        "generated A must actually enable"
+    );
     assert_eq!(approval_a, Some((Some(request_a), Some(1))));
     let period_a = cx
         .update_window(handle, |_, _, cx| {
@@ -4053,7 +4688,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
                     .unwrap();
                 a.persist_if_changed(true);
                 cx.notify();
-                (occurrence.id, occurrence.snapshot.objective.clone(), occurrence.snapshot.expected_result.clone())
+                (
+                    occurrence.id,
+                    occurrence.snapshot.objective.clone(),
+                    occurrence.snapshot.expected_result.clone(),
+                )
             })
         })
         .unwrap();
@@ -4074,15 +4713,24 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         w.click("automation-next-step", cx);
     })
     .unwrap();
-    let run_b = read_state(&mut cx, &app, |a| a.automation_ui.planning_run.expect("replan started"));
+    let run_b = read_state(&mut cx, &app, |a| {
+        a.automation_ui.planning_run.expect("replan started")
+    });
     wait_for_planning_run(&mut cx, &app, handle, run_b);
     confirm_wizard_understanding(&mut cx, &app, handle);
     let prompt = latest_prompt(&directory);
     assert!(prompt.contains("Objective B"));
     assert!(prompt.contains("Expected B"));
     assert!(prompt.contains("\"revision\":2"));
-    let revision_b = read_state(&mut cx, &app, |a| a.store.latest_planning_request(automation).unwrap().revision);
-    let request_b = read_state(&mut cx, &app, |a| a.store.latest_planning_request(automation).unwrap().id);
+    let revision_b = read_state(&mut cx, &app, |a| {
+        a.store
+            .latest_planning_request(automation)
+            .unwrap()
+            .revision
+    });
+    let request_b = read_state(&mut cx, &app, |a| {
+        a.store.latest_planning_request(automation).unwrap().id
+    });
     cx.update_window(handle, |_, w, cx| {
         w.click("enable-automation", cx);
         w.render_frame(cx);
@@ -4093,11 +4741,21 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         (
             definition.status,
             definition.plan_binding.clone(),
-            definition.approval.as_ref().map(|approval| (approval.plan_request_id, approval.plan_revision)),
+            definition
+                .approval
+                .as_ref()
+                .map(|approval| (approval.plan_request_id, approval.plan_revision)),
         )
     });
-    assert_eq!(status_b, DefinitionStatus::Enabled, "replanned B must enable without another Replan");
-    assert_eq!(binding_b.as_ref().map(|binding| binding.request_id), Some(request_b));
+    assert_eq!(
+        status_b,
+        DefinitionStatus::Enabled,
+        "replanned B must enable without another Replan"
+    );
+    assert_eq!(
+        binding_b.as_ref().map(|binding| binding.request_id),
+        Some(request_b)
+    );
     assert_eq!(approval_b, Some((Some(request_b), Some(revision_b))));
     let unchanged_period = read_state(&mut cx, &app, |a| {
         let occurrence = a.store.occurrence(period_a.0).unwrap();
@@ -4106,7 +4764,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             occurrence.snapshot.expected_result.clone(),
         )
     });
-    assert_eq!(unchanged_period, ("Objective A".into(), "Expected A".into()));
+    assert_eq!(
+        unchanged_period,
+        ("Objective A".into(), "Expected A".into())
+    );
 
     // Expected-only edit is another immutable revision.
     cx.update_window(handle, |_, w, cx| {
@@ -4120,20 +4781,26 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     })
     .unwrap();
     let run_expected = read_state(&mut cx, &app, |a| {
-        a.automation_ui.planning_run.expect("expected-only replan started")
+        a.automation_ui
+            .planning_run
+            .expect("expected-only replan started")
     });
     wait_for_planning_run(&mut cx, &app, handle, run_expected);
     confirm_wizard_understanding(&mut cx, &app, handle);
     let prompt = latest_prompt(&directory);
     assert!(prompt.contains("Objective B"));
     assert!(prompt.contains("Expected C"));
-    assert!(read_state(&mut cx, &app, |a| a
-        .store
-        .latest_planning_request(automation)
-        .unwrap()
-        .revision)
-        > revision_b);
-    let request_c = read_state(&mut cx, &app, |a| a.store.latest_planning_request(automation).unwrap().id);
+    assert!(
+        read_state(&mut cx, &app, |a| a
+            .store
+            .latest_planning_request(automation)
+            .unwrap()
+            .revision)
+            > revision_b
+    );
+    let request_c = read_state(&mut cx, &app, |a| {
+        a.store.latest_planning_request(automation).unwrap().id
+    });
     cx.update_window(handle, |_, w, cx| {
         w.click("enable-automation", cx);
         w.render_frame(cx);
@@ -4142,25 +4809,45 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     let (binding_c, approval_c) = read_state(&mut cx, &app, |a| {
         let definition = a.store.automation(automation).unwrap();
         (
-            definition.plan_binding.as_ref().map(|binding| binding.request_id),
-            definition.approval.as_ref().and_then(|approval| approval.plan_request_id),
+            definition
+                .plan_binding
+                .as_ref()
+                .map(|binding| binding.request_id),
+            definition
+                .approval
+                .as_ref()
+                .and_then(|approval| approval.plan_request_id),
         )
     });
-    assert_eq!(binding_c, Some(request_c), "expected-only revision needs its own reviewed plan");
+    assert_eq!(
+        binding_c,
+        Some(request_c),
+        "expected-only revision needs its own reviewed plan"
+    );
     assert_eq!(approval_c, Some(request_c));
 
     // Repeated unchanged replan reuses the same request revision.
-    let request_before = read_state(&mut cx, &app, |a| a.store.latest_planning_request(automation).unwrap().id);
+    let request_before = read_state(&mut cx, &app, |a| {
+        a.store.latest_planning_request(automation).unwrap().id
+    });
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.replan_automation(automation, w, cx));
         w.click("automation-next-step", cx);
         w.click("automation-next-step", cx);
     })
     .unwrap();
-    let run_unchanged = read_state(&mut cx, &app, |a| a.automation_ui.planning_run.expect("unchanged replan started"));
+    let run_unchanged = read_state(&mut cx, &app, |a| {
+        a.automation_ui
+            .planning_run
+            .expect("unchanged replan started")
+    });
     wait_for_planning_run(&mut cx, &app, handle, run_unchanged);
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.latest_planning_request(automation).unwrap().id),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .latest_planning_request(automation)
+            .unwrap()
+            .id),
         request_before
     );
 
@@ -4178,13 +4865,26 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         w.click("automation-next-step", cx);
     })
     .unwrap();
-    let run_failed = read_state(&mut cx, &app, |a| a.automation_ui.planning_run.expect("failed planner started"));
+    let run_failed = read_state(&mut cx, &app, |a| {
+        a.automation_ui
+            .planning_run
+            .expect("failed planner started")
+    });
     wait_for_planning_run(&mut cx, &app, handle, run_failed);
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.runs().iter().find(|run| run.id == run_failed).unwrap().status.clone()),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .runs()
+            .iter()
+            .find(|run| run.id == run_failed)
+            .unwrap()
+            .status
+            .clone()),
         "Failed"
     );
-    let failed_request = read_state(&mut cx, &app, |a| a.store.latest_planning_request(automation).unwrap().id);
+    let failed_request = read_state(&mut cx, &app, |a| {
+        a.store.latest_planning_request(automation).unwrap().id
+    });
     let (objective_after, expected_after) = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
@@ -4221,7 +4921,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     assert!(prompt.contains("FAIL_ONCE"));
     assert!(prompt.contains("Failure contract"));
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.latest_planning_request(automation).unwrap().id),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .latest_planning_request(automation)
+            .unwrap()
+            .id),
         failed_request
     );
 
@@ -4265,7 +4969,12 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     let (_, current) = read_state(&mut cx, &app, |a| a.navigation_path());
     assert_eq!(
         current,
-        read_state(&mut cx, &app, |a| a.store.automation(automation).unwrap().name.clone())
+        read_state(&mut cx, &app, |a| a
+            .store
+            .automation(automation)
+            .unwrap()
+            .name
+            .clone())
     );
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Runs, w, cx));
@@ -4277,7 +4986,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             .iter()
             .all(|run_id| a.displayed_run_id() != Some(*run_id))
     }));
-    assert_eq!(read_state(&mut cx, &app, |a| a.store.progress_result_task_count()), 0);
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.store.progress_result_task_count()),
+        0
+    );
     let legacy_id = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
@@ -4300,7 +5012,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     std::fs::create_dir_all(&restart_directory).unwrap();
     let restart_path = restart_directory.join("workspace.sqlite3");
     std::fs::copy(&path, &restart_path).unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     let mut app = None;
     let window = cx
         .open_window(size(px(1200.), px(900.)), |w, cx| {
@@ -4321,7 +5034,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     let handle: AnyWindowHandle = window.into();
     let samples = [attempt_ids[0], run_expected, run_failed];
     assert_eq!(
-        samples.iter().collect::<std::collections::BTreeSet<_>>().len(),
+        samples
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
         3,
         "the history sample needs three distinct attempts"
     );
@@ -4329,8 +5045,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         samples
             .iter()
             .map(|run_id| {
-                let request = a.store.request_for_run(*run_id).expect("owned attempt has a request");
-                (*run_id, request.input.clone(), request.expected_result.clone().unwrap_or_default())
+                let request = a
+                    .store
+                    .request_for_run(*run_id)
+                    .expect("owned attempt has a request");
+                (
+                    *run_id,
+                    request.input.clone(),
+                    request.expected_result.clone().unwrap_or_default(),
+                )
             })
             .collect::<Vec<_>>()
     });
@@ -4356,8 +5079,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     for (run_id, objective, expected) in &expected_content {
         cx.update_window(handle, |_, w, cx| {
             scroll_settings_to(w, cx, &format!("planning-attempt-{run_id}"));
-        }).unwrap();
-        let scroll_before = read_state(&mut cx, &app, |a| a.automation_ui.settings_scroll.offset().y);
+        })
+        .unwrap();
+        let scroll_before = read_state(&mut cx, &app, |a| {
+            a.automation_ui.settings_scroll.offset().y
+        });
         cx.update_window(handle, |_, w, cx| {
             w.click(format!("planning-attempt-{run_id}"), cx);
             w.render_frame(cx);
@@ -4379,12 +5105,13 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         });
         assert_eq!(&actual.0, objective);
         assert_eq!(actual.1.clone().unwrap_or_default(), *expected);
-        let id = |prefix: &str, value: &str| {
-            match prefix {
-                "planning-attempt-status" => format!("planning-attempt-status-{run_id}-{}", value.replace(' ', "-")),
-                "planning-attempt-revision" => format!("planning-attempt-revision-{run_id}-{value}"),
-                _ => format!("{prefix}-{run_id}"),
-            }
+        let id = |prefix: &str, value: &str| match prefix {
+            "planning-attempt-status" => format!(
+                "planning-attempt-status-{run_id}-{}",
+                value.replace(' ', "-")
+            ),
+            "planning-attempt-revision" => format!("planning-attempt-revision-{run_id}-{value}"),
+            _ => format!("{prefix}-{run_id}"),
         };
         cx.update_window(handle, |_, w, _| {
             assert!(
@@ -4405,7 +5132,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             );
             let revision_label = format!("Revision {revision}");
             assert_eq!(
-                w.find(id("planning-attempt-revision", &revision.to_string())).label(),
+                w.find(id("planning-attempt-revision", &revision.to_string()))
+                    .label(),
                 Some(revision_label.as_str())
             );
         })
@@ -4413,16 +5141,31 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
         let (_, current) = read_state(&mut cx, &app, |a| a.navigation_path());
         assert_eq!(
             current,
-            read_state(&mut cx, &app, |a| a.store.automation(automation).unwrap().name.clone())
+            read_state(&mut cx, &app, |a| a
+                .store
+                .automation(automation)
+                .unwrap()
+                .name
+                .clone())
         );
-        screenshot(&mut cx, handle, &directory, &format!("planning-attempt-{run_id}.png"));
+        screenshot(
+            &mut cx,
+            handle,
+            &directory,
+            &format!("planning-attempt-{run_id}.png"),
+        );
         if *run_id == run_expected {
             cx.update(|cx| Theme::change(ThemeMode::Dark, None, cx));
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
             })
             .unwrap();
-            screenshot(&mut cx, handle, &directory, &format!("planning-attempt-{run_id}-dark.png"));
+            screenshot(
+                &mut cx,
+                handle,
+                &directory,
+                &format!("planning-attempt-{run_id}-dark.png"),
+            );
             cx.update(|cx| Theme::change(ThemeMode::Light, None, cx));
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
@@ -4439,7 +5182,11 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
             None
         );
         assert_eq!(
-            read_state(&mut cx, &app, |a| a.automation_ui.settings_scroll.offset().y),
+            read_state(&mut cx, &app, |a| a
+                .automation_ui
+                .settings_scroll
+                .offset()
+                .y),
             scroll_before,
             "closing an attempt restores the settings history scroll"
         );
@@ -4470,7 +5217,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
         assert!(
-            w.try_find(format!("legacy-planning-attempt-{legacy_id}")).is_some(),
+            w.try_find(format!("legacy-planning-attempt-{legacy_id}"))
+                .is_some(),
             "ambiguous automation-project history is visible under Automations"
         );
         scroll_settings_to(w, cx, &format!("legacy-planning-attempt-{legacy_id}"));
@@ -4516,7 +5264,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     std::fs::create_dir_all(&narrow_directory).unwrap();
     let narrow_path = narrow_directory.join("workspace.sqlite3");
     std::fs::copy(&restart_path, &narrow_path).unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     let mut app = None;
     let window = cx
         .open_window(size(px(1000.), px(680.)), |w, cx| {
@@ -4559,7 +5308,8 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     );
     cx.update_window(handle, |_, w, _| {
         assert_eq!(
-            w.try_find(narrow_target.clone()).and_then(|item| item.focused()),
+            w.try_find(narrow_target.clone())
+                .and_then(|item| item.focused()),
             Some(true),
             "narrow Escape restores the exact Review opener"
         );
@@ -4572,9 +5322,15 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(plan)}}), flush=True)
     })
     .unwrap();
     assert!(read_state(&mut cx, &app, |a| a.displayed_run_id() != Some(legacy_id)));
-    assert_eq!(read_state(&mut cx, &app, |a| a.store.progress_result_task_count()), 0);
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
-    println!("planning CLI flow passed (wizard A/B, expected-only, unchanged, failure retry, restart attempts)");
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.store.progress_result_task_count()),
+        0
+    );
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+    println!(
+        "planning CLI flow passed (wizard A/B, expected-only, unchanged, failure retry, restart attempts)"
+    );
 }
 
 fn late_planning_completion_check(root: &Path) {
@@ -4583,8 +5339,13 @@ fn late_planning_completion_check(root: &Path) {
     std::fs::create_dir_all(directory.join("automations")).unwrap();
     let path = directory.join("workspace.sqlite3");
     let mut store = model_store(&directory);
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"].map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     let automation_project = store
         .ensure_automation_project(directory.join("automations").to_string_lossy().into())
         .unwrap();
@@ -4605,7 +5366,12 @@ fn late_planning_completion_check(root: &Path) {
         )
         .unwrap();
     let request = store
-        .create_automation_request(id, automation_project, "Track the semiconductor supply chain", "A sourced note")
+        .create_automation_request(
+            id,
+            automation_project,
+            "Track the semiconductor supply chain",
+            "A sourced note",
+        )
         .unwrap();
     confirm_fixture_understanding(&mut store, request);
     let mut run = store.prepare_request_plan(request).unwrap();
@@ -4614,8 +5380,7 @@ fn late_planning_completion_check(root: &Path) {
     run.output = r#"{"topic_name":"Semiconductor supply","brief":{"objective":"Track supply","deliverable":"Sourced note","scope":"Latest quarter","assumptions":[],"facts_to_verify":[]},"goals":[{"title":"Foundry capacity","brief":"Track announced capacity","tasks":[{"title":"Collect","instructions":"Collect filings","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare capacity","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]},{"title":"Equipment orders","brief":"Track equipment bookings","tasks":[{"title":"Collect","instructions":"Collect orders","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Compare orders","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Write the note","kind":"advise","depends_on":[1]}]}]}"#.into();
     let run_id = run.id;
     store.push_run(run);
-    store.request_mut(request).unwrap()
-        .planning_run_id = Some(run_id);
+    store.request_mut(request).unwrap().planning_run_id = Some(run_id);
     Storage::new(path.clone()).save(&store).unwrap();
 
     let mut cx = HeadlessAppContext::with_platform(
@@ -4685,13 +5450,28 @@ fn late_planning_completion_check(root: &Path) {
                     .and_then(|request| request.planning_run_id),
             )
         });
-    assert!(plan.is_none(), "the discarded plan must not repopulate the draft");
+    assert!(
+        plan.is_none(),
+        "the discarded plan must not repopulate the draft"
+    );
     assert_eq!(step, 2, "a stale completion must not jump the wizard");
     assert_eq!(planning_automation, None);
     assert_eq!(planning_run, None);
-    assert_eq!(template_goals, Some(2), "the valid saved plan result is retained");
-    assert_eq!(run_status.as_deref(), Some("Succeeded"), "the planning run is not cancelled");
-    assert_eq!(request_run, Some(run_id), "request history keeps its planning run");
+    assert_eq!(
+        template_goals,
+        Some(2),
+        "the valid saved plan result is retained"
+    );
+    assert_eq!(
+        run_status.as_deref(),
+        Some("Succeeded"),
+        "the planning run is not cancelled"
+    );
+    assert_eq!(
+        request_run,
+        Some(run_id),
+        "request history keeps its planning run"
+    );
     // Switching back after completion still must not resurrect the old plan.
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
@@ -4701,7 +5481,8 @@ fn late_planning_completion_check(root: &Path) {
         });
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
     println!("late planning completion passed");
 }
 
@@ -4713,11 +5494,9 @@ fn shape_revision_atomic_check(root: &Path) {
     enable(&mut store, id);
     let before = store.automation(id).unwrap().clone();
 
-    let quick = crate::automation_execution::build_quick_template(
-        "Check fuel prices",
-        "A sourced price",
-    )
-    .unwrap();
+    let quick =
+        crate::automation_execution::build_quick_template("Check fuel prices", "A sourced price")
+            .unwrap();
     let error = store
         .revise_automation_with_shape(
             id,
@@ -4773,7 +5552,8 @@ fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &
     for _ in 0..4 {
         std::thread::sleep(Duration::from_millis(40));
         cx.run_until_parked();
-        cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+        cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+            .unwrap();
     }
     cx.capture_screenshot(handle)
         .unwrap()
@@ -4848,7 +5628,10 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.click("automation-name", cx);
         w.input(long_name, cx);
         w.click("automation-objective", cx);
-        w.input("Track notable public information changes with sources, time range and uncertainty.", cx);
+        w.input(
+            "Track notable public information changes with sources, time range and uncertainty.",
+            cx,
+        );
         scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click("automation-expected", cx);
         w.input("A three-minute brief with sources and evidence gaps.", cx);
@@ -4883,17 +5666,16 @@ fn ui_interaction(root: &Path) -> PathBuf {
             .expect("enabled automation exists")
             .id;
         let definition = a.store.automation(id).unwrap();
-        (
-            id,
-            definition.version,
-            definition.status,
-            definition.cursor,
-        )
+        (id, definition.version, definition.status, definition.cursor)
     });
     assert_eq!(status, DefinitionStatus::Enabled);
     assert!(cursor.is_some());
     assert_eq!(version, 1);
-    assert!(read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().approval_current()));
+    assert!(read_state(&mut cx, &app, |a| a
+        .store
+        .automation(id)
+        .unwrap()
+        .approval_current()));
 
     // A failed storage transaction must not create an occurrence, advance the cursor
     // or start the fake runner; the same due point still runs after recovery.
@@ -4924,7 +5706,10 @@ fn ui_interaction(root: &Path) -> PathBuf {
         "failed scheduling transaction must not advance the cursor"
     );
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_fake.as_ref().map_or(0, |runner| runner.starts.len())),
+        read_state(&mut cx, &app, |a| a
+            .automation_fake
+            .as_ref()
+            .map_or(0, |runner| runner.starts.len())),
         0,
         "failed scheduling transaction must not dispatch"
     );
@@ -4946,12 +5731,25 @@ fn ui_interaction(root: &Path) -> PathBuf {
             .unwrap()
     });
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.occurrence(occurrence).unwrap().status),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .occurrence(occurrence)
+            .unwrap()
+            .status),
         OccurrenceStatus::Succeeded
     );
-    assert!(read_state(&mut cx, &app, |a| a.store.occurrence(occurrence).unwrap().unread));
+    assert!(read_state(&mut cx, &app, |a| a
+        .store
+        .occurrence(occurrence)
+        .unwrap()
+        .unread));
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.automation_fake.as_ref().unwrap().starts.len()),
+        read_state(&mut cx, &app, |a| a
+            .automation_fake
+            .as_ref()
+            .unwrap()
+            .starts
+            .len()),
         1
     );
     // Clicking a history row opens the result in a dialog and marks it read.
@@ -4971,7 +5769,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
         read_state(&mut cx, &app, |a| a.period_overlay()),
         Some(occurrence)
     );
-    assert!(!read_state(&mut cx, &app, |a| a.store.occurrence(occurrence).unwrap().unread));
+    assert!(!read_state(&mut cx, &app, |a| a
+        .store
+        .occurrence(occurrence)
+        .unwrap()
+        .unread));
     screenshot(&mut cx, handle, &directory, "03-result.png");
     cx.update_window(handle, |_, w, cx| {
         w.click("close-automation-result", cx);
@@ -5002,7 +5804,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
     .unwrap();
     let (version, status, name) = read_state(&mut cx, &app, |a| {
         let definition = a.store.automation(id).unwrap();
-        (definition.version, definition.status, definition.name.clone())
+        (
+            definition.version,
+            definition.status,
+            definition.name.clone(),
+        )
     });
     assert_eq!(version, 2);
     assert_eq!(status, DefinitionStatus::Enabled);
@@ -5015,15 +5821,22 @@ fn ui_interaction(root: &Path) -> PathBuf {
         assert!(pause.visible());
         assert_ne!(pause.disabled(), Some(true));
         w.click(ElementId::Name(format!("pause-automation-{id}").into()), cx);
-    }).unwrap();
+    })
+    .unwrap();
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().status),
         DefinitionStatus::Paused
     );
-    assert_eq!(read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().cursor), None);
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().cursor),
+        None
+    );
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert!(w.try_find(ElementId::Name(format!("pause-automation-{id}").into())).is_none());
+        assert!(
+            w.try_find(ElementId::Name(format!("pause-automation-{id}").into()))
+                .is_none()
+        );
         let resume = w.find(ElementId::Name(format!("resume-automation-{id}").into()));
         assert!(resume.visible());
         assert_ne!(resume.disabled(), Some(true));
@@ -5052,8 +5865,12 @@ fn ui_interaction(root: &Path) -> PathBuf {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Automations, w, cx));
         w.render_frame(cx);
-        w.click(ElementId::Name(format!("resume-automation-{id}").into()), cx);
-    }).unwrap();
+        w.click(
+            ElementId::Name(format!("resume-automation-{id}").into()),
+            cx,
+        );
+    })
+    .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(w.try_find("next-runs-paused").is_none());
@@ -5071,8 +5888,12 @@ fn ui_interaction(root: &Path) -> PathBuf {
         let resume = w.find(ElementId::Name(format!("resume-automation-{id}").into()));
         assert!(resume.visible());
         assert_ne!(resume.disabled(), Some(true));
-        w.click(ElementId::Name(format!("resume-automation-{id}").into()), cx);
-    }).unwrap();
+        w.click(
+            ElementId::Name(format!("resume-automation-{id}").into()),
+            cx,
+        );
+    })
+    .unwrap();
     assert_eq!(
         read_state(&mut cx, &app, |a| a.store.automation(id).unwrap().status),
         DefinitionStatus::Enabled
@@ -5080,17 +5901,18 @@ fn ui_interaction(root: &Path) -> PathBuf {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::Automations, w, cx));
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         w.click(ElementId::Name(format!("run-automation-{id}").into()), cx);
-    }).unwrap();
+    })
+    .unwrap();
     assert!(read_state(&mut cx, &app, |a| {
-        a.store
-            .automation_occurrences(id)
-            .iter()
-            .any(|o| o.source == crate::automation::TriggerSource::Manual
-                && o.status == OccurrenceStatus::Succeeded)
+        a.store.automation_occurrences(id).iter().any(|o| {
+            o.source == crate::automation::TriggerSource::Manual
+                && o.status == OccurrenceStatus::Succeeded
+        })
     }));
     // Hold a fake run so the Stop action can be exercised.
     cx.update_window(handle, |_, _, cx| {
@@ -5100,22 +5922,32 @@ fn ui_interaction(root: &Path) -> PathBuf {
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         w.click(ElementId::Name(format!("run-automation-{id}").into()), cx);
-    }).unwrap();
+    })
+    .unwrap();
     let running = read_state(&mut cx, &app, |a| {
         a.store.automation_active(id).map(|o| o.id)
     });
     let running = running.expect("held fake run is active");
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.occurrence(running).unwrap().status),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .occurrence(running)
+            .unwrap()
+            .status),
         OccurrenceStatus::Running
     );
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.open_automation(id, w, cx));
         w.render_frame(cx);
         w.click("stop-automation", cx);
-    }).unwrap();
+    })
+    .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.occurrence(running).unwrap().status),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .occurrence(running)
+            .unwrap()
+            .status),
         OccurrenceStatus::Cancelled
     );
     assert!(read_state(&mut cx, &app, |a| {
@@ -5183,14 +6015,20 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     assert_eq!(read_state(&mut cx, &app, |a| a.automation_ui.step), 1);
-    assert!(read_state(&mut cx, &app, |a| a.automation_ui.feedback.is_some()));
+    assert!(read_state(&mut cx, &app, |a| a
+        .automation_ui
+        .feedback
+        .is_some()));
 
     // Storage failure never reports Saved/Enabled.
     let blocked = directory.join("blocked");
     std::fs::write(&blocked, "file blocks directory creation").unwrap();
     cx.update_window(handle, |_, w, cx| {
         w.click("automation-objective", cx);
-        w.input("Verify that failed storage does not show a saved status.", cx);
+        w.input(
+            "Verify that failed storage does not show a saved status.",
+            cx,
+        );
         scroll_wizard_field(w, cx, &app, "automation-expected");
         w.click("automation-expected", cx);
         w.input("Keep the draft and show the error.", cx);
@@ -5220,7 +6058,10 @@ fn ui_interaction(root: &Path) -> PathBuf {
 
     // The store must still hold the real enabled version after the failed save.
     let saved = Storage::new(path.clone()).load().unwrap().unwrap();
-    assert_eq!(saved.automation(id).unwrap().status, DefinitionStatus::Enabled);
+    assert_eq!(
+        saved.automation(id).unwrap().status,
+        DefinitionStatus::Enabled
+    );
     assert!(saved.automation(id).unwrap().approval_current());
     screenshot(&mut cx, handle, &directory, "04-detail.png");
     cx.update_window(handle, |_, w, cx| {
@@ -5328,10 +6169,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.render_frame(cx);
     })
     .unwrap();
-    assert_eq!(
-        read_state(&mut cx, &app, |a| a.scope()),
-        Scope::Automations
-    );
+    assert_eq!(read_state(&mut cx, &app, |a| a.scope()), Scope::Automations);
     assert!(!read_state(&mut cx, &app, |a| a.automation_ui.creating));
     assert!(read_state(&mut cx, &app, |a| a.settings_overlay()));
     assert_eq!(
@@ -5395,11 +6233,17 @@ fn ui_interaction(root: &Path) -> PathBuf {
         read_state(&mut cx, &app, |a| a.scope()),
         Scope::AutomationRuns
     );
-    assert_eq!(read_state(&mut cx, &app, |a| a.title()), "Automation results");
+    assert_eq!(
+        read_state(&mut cx, &app, |a| a.title()),
+        "Automation results"
+    );
     let (crumbs, current) = read_state(&mut cx, &app, |a| a.navigation_path());
     assert_eq!(current, "Automation results");
     assert_eq!(
-        crumbs.iter().map(|(_, title, _)| title.as_str()).collect::<Vec<_>>(),
+        crumbs
+            .iter()
+            .map(|(_, title, _)| title.as_str())
+            .collect::<Vec<_>>(),
         vec!["Automations"],
         "automation results must not borrow Research's All crumb"
     );
@@ -5561,7 +6405,8 @@ fn ui_interaction(root: &Path) -> PathBuf {
     });
     cx.update_window(handle, |_, w, cx| {
         let open = format!("automation-step-{step}");
-        if w.try_find(open.clone()).is_none() && w.try_find("automation-completed-steps").is_some() {
+        if w.try_find(open.clone()).is_none() && w.try_find("automation-completed-steps").is_some()
+        {
             w.click("automation-completed-steps", cx);
             w.render_frame(cx);
         }
@@ -5662,7 +6507,9 @@ fn ui_interaction(root: &Path) -> PathBuf {
         );
         w.click(format!("open-occurrence-{latest}"), cx);
         w.render_frame(cx);
-        if w.try_find(format!("automation-step-{step}")).is_none() && w.try_find("automation-completed-steps").is_some() {
+        if w.try_find(format!("automation-step-{step}")).is_none()
+            && w.try_find("automation-completed-steps").is_some()
+        {
             w.click("automation-completed-steps", cx);
             w.render_frame(cx);
         }
@@ -5700,7 +6547,12 @@ fn ui_interaction(root: &Path) -> PathBuf {
         );
     })
     .unwrap();
-    screenshot(&mut cx, handle, &directory, "07b-automation-results-filtered.png");
+    screenshot(
+        &mut cx,
+        handle,
+        &directory,
+        "07b-automation-results-filtered.png",
+    );
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.automation_ui.result_filter = Some(copy);
@@ -5724,10 +6576,7 @@ fn ui_interaction(root: &Path) -> PathBuf {
         w.render_frame(cx);
     })
     .unwrap();
-    assert_eq!(
-        read_state(&mut cx, &app, |a| a.scope()),
-        Scope::Automations
-    );
+    assert_eq!(read_state(&mut cx, &app, |a| a.scope()), Scope::Automations);
 
     // A period waiting for its scheduled retry is cancellable directly from
     // Research results, without pausing the automation or stopping a process.
@@ -5739,7 +6588,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
                     .store
                     .request_manual_occurrence(id, "waiting-retry", now)
                     .unwrap();
-                a.store.occurrence_mut(occurrence.id).unwrap().mark_running(now).unwrap();
+                a.store
+                    .occurrence_mut(occurrence.id)
+                    .unwrap()
+                    .mark_running(now)
+                    .unwrap();
                 a.store
                     .wait_for_retry(occurrence.id, "Waiting for the approved step retry.")
                     .unwrap();
@@ -5756,7 +6609,12 @@ fn ui_interaction(root: &Path) -> PathBuf {
     .unwrap();
     // Active rows stay read-only: the period dialog owns the cancel action so a
     // running list cannot stop work with a single stray click.
-    screenshot(&mut cx, handle, &directory, "07c-automation-results-active.png");
+    screenshot(
+        &mut cx,
+        handle,
+        &directory,
+        "07c-automation-results-active.png",
+    );
     cx.update_window(handle, |_, w, cx| {
         // The newest period is appended at the end of the results list; scroll
         // the list to it instead of inheriting the restored offset.
@@ -5790,7 +6648,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
     })
     .unwrap();
     assert_eq!(
-        read_state(&mut cx, &app, |a| a.store.occurrence(waiting).unwrap().status),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .occurrence(waiting)
+            .unwrap()
+            .status),
         OccurrenceStatus::Cancelled
     );
     assert_eq!(
@@ -5825,7 +6687,11 @@ fn ui_interaction(root: &Path) -> PathBuf {
         "Resume must reopen the same period, not queue a new manual occurrence"
     );
     assert_ne!(
-        read_state(&mut cx, &app, |a| a.store.occurrence(waiting).unwrap().status),
+        read_state(&mut cx, &app, |a| a
+            .store
+            .occurrence(waiting)
+            .unwrap()
+            .status),
         OccurrenceStatus::Cancelled,
         "the cancelled period is queued again in place"
     );
@@ -5838,9 +6704,20 @@ fn settings_hierarchy_fixture(root: &Path) {
     for shape in [AutomationShape::Quick, AutomationShape::Research] {
         for (width, height) in [(1440., 920.), (900., 620.)] {
             for mode in [Appearance::Light, Appearance::Dark] {
-                let name = format!("settings-{}-{}-{}",
-                    if shape == AutomationShape::Quick { "quick" } else { "research" },
-                    if mode == Appearance::Light { "light" } else { "dark" }, width as u32);
+                let name = format!(
+                    "settings-{}-{}-{}",
+                    if shape == AutomationShape::Quick {
+                        "quick"
+                    } else {
+                        "research"
+                    },
+                    if mode == Appearance::Light {
+                        "light"
+                    } else {
+                        "dark"
+                    },
+                    width as u32
+                );
                 let directory = root.join(name);
                 std::fs::create_dir_all(&directory).unwrap();
                 let path = directory.join("workspace.sqlite3");
@@ -5853,34 +6730,56 @@ fn settings_hierarchy_fixture(root: &Path) {
                 } else {
                     crate::automation_execution::build_template(objective, expected).unwrap()
                 };
-                let id = store.create_automation_draft(1, shape, "Fuel price review".into(),
-                    objective.into(), expected.into(), crate::automation_schedule::Schedule {
-                        spec: crate::automation_schedule::ScheduleSpec::Daily { hour: 10, minute: 0 },
-                        timezone: "Asia/Shanghai".into(),
-                    }, Default::default(), Some(template), now()).unwrap();
+                let id = store
+                    .create_automation_draft(
+                        1,
+                        shape,
+                        "Fuel price review".into(),
+                        objective.into(),
+                        expected.into(),
+                        crate::automation_schedule::Schedule {
+                            spec: crate::automation_schedule::ScheduleSpec::Daily {
+                                hour: 10,
+                                minute: 0,
+                            },
+                            timezone: "Asia/Shanghai".into(),
+                        },
+                        Default::default(),
+                        Some(template),
+                        now(),
+                    )
+                    .unwrap();
                 enable(&mut store, id);
                 let mut definition = store.automation_mut(id).unwrap();
                 let approval = definition.approval.as_mut().unwrap();
-                approval.models = std::array::from_fn(|_| "provider-with-a-long-name/research-model-with-an-extended-version-identifier".into());
+                approval.models = std::array::from_fn(|_| {
+                    "provider-with-a-long-name/research-model-with-an-extended-version-identifier"
+                        .into()
+                });
                 approval.agents = std::array::from_fn(|_| Some("OpenCode".into()));
                 drop(definition);
                 Storage::new(path.clone()).save(&store).unwrap();
                 let mut cx = HeadlessAppContext::with_platform(
                     platform::current_platform(true).text_system(),
-                    Arc::new(crate::ui_assets::AppAssets), platform::current_headless_renderer);
+                    Arc::new(crate::ui_assets::AppAssets),
+                    platform::current_headless_renderer,
+                );
                 cx.update(init);
                 let mut app = None;
-                let handle: AnyWindowHandle = cx.open_window(size(px(width), px(height)), |w, cx| {
-                    let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-                    view.update(cx, |a, cx| {
-                        a.attach_storage(Storage::new(path.clone()), w, cx);
-                        a.automation_fake_mode = true;
-                        a.open_automation(id, w, cx);
-                        cx.notify();
-                    });
-                    app = Some(view.clone());
-                    cx.new(|cx| base::Root::new(view, w, cx))
-                }).unwrap().into();
+                let handle: AnyWindowHandle = cx
+                    .open_window(size(px(width), px(height)), |w, cx| {
+                        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+                        view.update(cx, |a, cx| {
+                            a.attach_storage(Storage::new(path.clone()), w, cx);
+                            a.automation_fake_mode = true;
+                            a.open_automation(id, w, cx);
+                            cx.notify();
+                        });
+                        app = Some(view.clone());
+                        cx.new(|cx| base::Root::new(view, w, cx))
+                    })
+                    .unwrap()
+                    .into();
                 let app = app.unwrap();
                 cx.update_window(handle, |_, w, cx| {
                     w.render_frame(cx);
@@ -5903,7 +6802,8 @@ fn settings_hierarchy_fixture(root: &Path) {
                     assert!(schedule.visible());
                     assert!(schedule.bounds().right() < px(width));
                     assert!(
-                        w.try_find("automation-settings-notify-completion").is_some(),
+                        w.try_find("automation-settings-notify-completion")
+                            .is_some(),
                         "automation settings expose the completion-notification opt-in"
                     );
                     let version = app.read(cx).store.automation(id).unwrap().version;
@@ -5914,18 +6814,24 @@ fn settings_hierarchy_fixture(root: &Path) {
                     assert!(definition.policy.notify_on_completion);
                     assert_eq!(definition.version, version);
                     if shape == AutomationShape::Quick {
-                        assert!(w.try_find("planning-attempt-history").is_none(),
-                            "quick tasks should not show irrelevant empty planning history");
+                        assert!(
+                            w.try_find("planning-attempt-history").is_none(),
+                            "quick tasks should not show irrelevant empty planning history"
+                        );
                     }
-                }).unwrap();
+                })
+                .unwrap();
                 screenshot(&mut cx, handle, &directory, "settings-top.png");
                 cx.update_window(handle, |_, w, cx| {
                     app.update(cx, |a, cx| {
-                        a.automation_ui.settings_scroll.set_offset(point(px(0.), px(-4000.)));
+                        a.automation_ui
+                            .settings_scroll
+                            .set_offset(point(px(0.), px(-4000.)));
                         cx.notify();
                     });
                     w.render_frame(cx);
-                }).unwrap();
+                })
+                .unwrap();
                 screenshot(&mut cx, handle, &directory, "settings-execution.png");
                 cx.update_window(handle, |_, w, cx| {
                     assert!(w.find("automation-execution-help").visible());
@@ -5933,30 +6839,37 @@ fn settings_hierarchy_fixture(root: &Path) {
                     let model = w.find("automation-execution-model-3");
                     let agent = w.find("automation-execution-agent-3");
                     assert!(model.visible() && agent.visible());
-                    assert!(model.bounds().right() <= px(width) && agent.bounds().right() <= px(width),
-                        "long model names must remain within the dialog viewport");
+                    assert!(
+                        model.bounds().right() <= px(width) && agent.bounds().right() <= px(width),
+                        "long model names must remain within the dialog viewport"
+                    );
                     let help = w.find("automation-execution-help").bounds();
                     w.pointer_move(help.center(), None, cx);
-                }).unwrap();
+                })
+                .unwrap();
                 cx.run_until_parked();
                 cx.advance_clock(Duration::from_millis(600));
                 cx.run_until_parked();
-                cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+                cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+                    .unwrap();
                 screenshot(&mut cx, handle, &directory, "settings-help.png");
                 cx.update_window(handle, |_, w, cx| {
                     let model = w.find("automation-execution-model-3").bounds();
                     w.pointer_move(model.center(), None, cx);
-                }).unwrap();
+                })
+                .unwrap();
                 cx.run_until_parked();
                 cx.advance_clock(Duration::from_millis(600));
                 cx.run_until_parked();
-                cx.update_window(handle, |_, w, cx| w.render_frame(cx)).unwrap();
+                cx.update_window(handle, |_, w, cx| w.render_frame(cx))
+                    .unwrap();
                 screenshot(&mut cx, handle, &directory, "settings-model-help.png");
                 cx.update_window(handle, |_, w, cx| {
                     w.click("close-automation-settings", cx);
                     w.render_frame(cx);
                     assert!(!app.read(cx).settings_overlay());
-                }).unwrap();
+                })
+                .unwrap();
                 cx.update(|cx| cx.quit());
             }
         }
@@ -5969,15 +6882,29 @@ fn list_hierarchy_fixture(root: &Path) {
     std::fs::create_dir_all(&directory).unwrap();
     let mut store = model_store(&directory);
     for (name, status, paused) in [
-        ("Daily market summary", Some(OccurrenceStatus::Succeeded), false),
-        ("A long automation name that must leave room for its type and enabled status", Some(OccurrenceStatus::Failed), false),
+        (
+            "Daily market summary",
+            Some(OccurrenceStatus::Succeeded),
+            false,
+        ),
+        (
+            "A long automation name that must leave room for its type and enabled status",
+            Some(OccurrenceStatus::Failed),
+            false,
+        ),
         ("New automation", None, false),
-        ("Paused weekly review", Some(OccurrenceStatus::Succeeded), true),
+        (
+            "Paused weekly review",
+            Some(OccurrenceStatus::Succeeded),
+            true,
+        ),
     ] {
         let id = draft(&mut store, name);
         enable(&mut store, id);
         if let Some(status) = status {
-            let occurrence = store.request_manual_occurrence(id, &format!("list-{id}"), now() - 600).unwrap();
+            let occurrence = store
+                .request_manual_occurrence(id, &format!("list-{id}"), now() - 600)
+                .unwrap();
             let mut occurrence = store.occurrence_mut(occurrence.id).unwrap();
             occurrence.status = status;
             occurrence.actual_started_at = Some(now() - 590);
@@ -6003,7 +6930,11 @@ fn render_matrix(root: &Path, source: &Path) {
         for mode in [Appearance::Light, Appearance::Dark] {
             let label = format!(
                 "{}-{}",
-                if mode == Appearance::Light { "light" } else { "dark" },
+                if mode == Appearance::Light {
+                    "light"
+                } else {
+                    "dark"
+                },
                 width as u32
             );
             let directory = root.join(&label);
@@ -6040,12 +6971,18 @@ fn render_matrix(root: &Path, source: &Path) {
                 for definition in app.read(cx).store.automations() {
                     let schedule = w.find(format!("automation-schedule-{}", definition.id));
                     let latest = w.find(format!("automation-latest-{}", definition.id));
-                    assert!(schedule.bounds().origin.y < latest.bounds().origin.y,
-                        "schedule and runtime information occupy separate rows");
-                    assert!(latest.bounds().right() <= px(width),
-                        "runtime summary stays inside the compact window");
-                    let pause_id = || ElementId::Name(format!("pause-automation-{}", definition.id).into());
-                    let resume_id = || ElementId::Name(format!("resume-automation-{}", definition.id).into());
+                    assert!(
+                        schedule.bounds().origin.y < latest.bounds().origin.y,
+                        "schedule and runtime information occupy separate rows"
+                    );
+                    assert!(
+                        latest.bounds().right() <= px(width),
+                        "runtime summary stays inside the compact window"
+                    );
+                    let pause_id =
+                        || ElementId::Name(format!("pause-automation-{}", definition.id).into());
+                    let resume_id =
+                        || ElementId::Name(format!("resume-automation-{}", definition.id).into());
                     match definition.status {
                         DefinitionStatus::Enabled => {
                             let pause = w.try_find(pause_id()).expect("enabled rows show Pause");
@@ -6053,14 +6990,19 @@ fn render_matrix(root: &Path, source: &Path) {
                             assert!(w.try_find(resume_id()).is_none());
                         }
                         DefinitionStatus::Draft => {
-                            let pause = w.try_find(pause_id()).expect("drafts keep a disabled Pause");
+                            let pause = w
+                                .try_find(pause_id())
+                                .expect("drafts keep a disabled Pause");
                             assert_eq!(pause.disabled(), Some(true));
                             assert!(w.try_find(resume_id()).is_none());
                         }
                         DefinitionStatus::Paused | DefinitionStatus::NeedsAttention => {
-                            assert!(w.try_find(pause_id()).is_none(),
-                                "the single lifecycle slot switches away from Pause");
-                            let resume = w.try_find(resume_id())
+                            assert!(
+                                w.try_find(pause_id()).is_none(),
+                                "the single lifecycle slot switches away from Pause"
+                            );
+                            let resume = w
+                                .try_find(resume_id())
                                 .expect("paused rows show Resume schedule");
                             assert_ne!(resume.disabled(), Some(true));
                         }
@@ -6070,25 +7012,36 @@ fn render_matrix(root: &Path, source: &Path) {
                         }
                     }
                 }
-            }).unwrap();
+            })
+            .unwrap();
             if width == 1440. && matches!(mode, Appearance::Light) {
                 let attention = read_state(&mut cx, &app, |a| {
-                    a.store.automations()
+                    a.store
+                        .automations()
                         .iter()
                         .find(|definition| definition.status == DefinitionStatus::NeedsAttention)
                         .unwrap()
                         .id
                 });
                 cx.update_window(handle, |_, w, cx| {
-                    w.click(ElementId::Name(format!("resume-automation-{attention}").into()), cx);
-                }).unwrap();
+                    w.click(
+                        ElementId::Name(format!("resume-automation-{attention}").into()),
+                        cx,
+                    );
+                })
+                .unwrap();
                 assert_eq!(
-                    read_state(&mut cx, &app, |a| a.store.automation(attention).unwrap().status),
+                    read_state(&mut cx, &app, |a| a
+                        .store
+                        .automation(attention)
+                        .unwrap()
+                        .status),
                     DefinitionStatus::Enabled
                 );
             }
             let archived = read_state(&mut cx, &app, |a| {
-                a.store.automations()
+                a.store
+                    .automations()
                     .iter()
                     .find(|definition| definition.status == DefinitionStatus::Archived)
                     .unwrap()
@@ -6101,9 +7054,20 @@ fn render_matrix(root: &Path, source: &Path) {
                     cx.notify();
                 });
                 w.render_frame(cx);
-                assert!(w.try_find(ElementId::Name(format!("pause-automation-{archived}").into())).is_none());
-                assert!(w.try_find(ElementId::Name(format!("resume-automation-{archived}").into())).is_none());
-            }).unwrap();
+                assert!(
+                    w.try_find(ElementId::Name(
+                        format!("pause-automation-{archived}").into()
+                    ))
+                    .is_none()
+                );
+                assert!(
+                    w.try_find(ElementId::Name(
+                        format!("resume-automation-{archived}").into()
+                    ))
+                    .is_none()
+                );
+            })
+            .unwrap();
             if width == 1000. && std::env::var_os("PLANNING_QA_LIST_ONLY").is_some() {
                 cx.update_window(handle, |_, w, cx| {
                     app.update(cx, |a, cx| {
@@ -6111,7 +7075,8 @@ fn render_matrix(root: &Path, source: &Path) {
                         cx.notify();
                     });
                     w.render_frame(cx);
-                }).unwrap();
+                })
+                .unwrap();
                 screenshot(&mut cx, handle, &directory, "list-scrolled.png");
             }
             let id = read_state(&mut cx, &app, |a| a.store.automations()[0].id);
@@ -6149,7 +7114,8 @@ pub fn performance_fixture() {
         spec: crate::automation_schedule::ScheduleSpec::Interval { minutes: 1 },
         timezone: "UTC".into(),
     };
-    let template = crate::automation_execution::build_template("Capacity check", "Concise report").unwrap();
+    let template =
+        crate::automation_execution::build_template("Capacity check", "Concise report").unwrap();
     let id = store
         .create_automation_draft(
             1,
@@ -6238,7 +7204,11 @@ pub fn performance_fixture() {
             let goal = materialized.research_goal_id.unwrap();
             let mut run_ids = vec![];
             for task in store.research_children(goal) {
-                let task_status = if status == OccurrenceStatus::Failed { "Failed" } else { "Succeeded" };
+                let task_status = if status == OccurrenceStatus::Failed {
+                    "Failed"
+                } else {
+                    "Succeeded"
+                };
                 let run = crate::domain::AgentRun {
                     automation_occurrence_id: Some(materialized.id),
                     planning_owner: None,
@@ -6251,10 +7221,16 @@ pub fn performance_fixture() {
                     task_title: "Capacity sample".into(),
                     directory: directory.to_string_lossy().into(),
                     prompt: "QA performance fixture".into(),
-                    started_at: chrono::DateTime::from_timestamp(at, 0).unwrap().to_rfc3339(),
+                    started_at: chrono::DateTime::from_timestamp(at, 0)
+                        .unwrap()
+                        .to_rfc3339(),
                     queued_at: String::new(),
                     workspace_source: None,
-                    ended_at: Some(chrono::DateTime::from_timestamp(at + 60, 0).unwrap().to_rfc3339()),
+                    ended_at: Some(
+                        chrono::DateTime::from_timestamp(at + 60, 0)
+                            .unwrap()
+                            .to_rfc3339(),
+                    ),
                     session_id: Some(format!("qa-session-{index}-{task}")),
                     exit_code: Some(0),
                     agent: "OpenCode".into(),

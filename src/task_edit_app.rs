@@ -13,9 +13,9 @@
 use crate::app::TaskApp;
 use crate::draft_exit::TaskEditValues;
 use crate::scoped_edit::{
-    apply_comment_edit, apply_task_edit, prepare_comment_edit, prepare_task_edit,
-    rebase_task_edit, CommentEditPlan, ScopedEditError, StageIntent, TaskEditField, TaskEditInput,
-    TaskEditPlan, TaskEditValue,
+    CommentEditPlan, ScopedEditError, StageIntent, TaskEditField, TaskEditInput, TaskEditPlan,
+    TaskEditValue, apply_comment_edit, apply_task_edit, prepare_comment_edit, prepare_task_edit,
+    rebase_task_edit,
 };
 use gpui_kit::*;
 
@@ -68,27 +68,15 @@ impl TaskSaveOutcome {
 }
 
 impl TaskApp {
-    /// Build the real editor payload from the live draft. Priority is not edited
-    /// in this form and therefore preserves the current task value.
+    /// Build the real editor payload from the live draft.
     pub(crate) fn draft_editor_values(&self, cx: &Context<Self>) -> Option<TaskEditValues> {
         let draft = self.draft.as_ref()?;
-        let labels: Vec<String> = draft
-            .labels
-            .read(cx)
-            .value()
-            .split(',')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-            .collect();
         Some(TaskEditValues {
             title: draft.title.read(cx).value().to_string(),
             description: draft.description.read(cx).value().to_string(),
-            labels,
             due_date: draft.due.read(cx).value().to_string(),
             project: draft.project,
             stage: draft.stage,
-            cycle: draft.cycle.clone(),
         })
     }
 
@@ -105,11 +93,9 @@ impl TaskApp {
             .unwrap_or_else(|| TaskEditValues {
                 title: task.title.clone(),
                 description: task.description.clone(),
-                labels: task.labels.clone(),
                 due_date: task.due_date.clone(),
                 project: task.project_id,
                 stage: task.stage,
-                cycle: task.cycle.clone(),
             });
         Some(TaskEditInput {
             id: task.id,
@@ -123,23 +109,12 @@ impl TaskApp {
             } else {
                 task.description.clone()
             },
-            labels: if current_values.labels != baseline.labels {
-                current_values.labels
-            } else {
-                task.labels.clone()
-            },
+            labels: task.labels.clone(),
             due_date: if current_values.due_date != baseline.due_date {
                 current_values.due_date
             } else {
                 task.due_date.clone()
             },
-            cycle: if current_values.cycle != baseline.cycle {
-                current_values.cycle
-            } else {
-                task.cycle.clone()
-            },
-            priority: task.priority,
-            bucket: task.bucket.clone(),
             project: Some(if current_values.project != baseline.project {
                 current_values.project
             } else {
@@ -240,10 +215,7 @@ impl TaskApp {
                 exit_token: self.navigation.pending_exit_token.take(),
             };
             #[cfg(feature = "qa")]
-            eprintln!(
-                "LIVE_DIAG apply_us={}",
-                apply_started.elapsed().as_micros()
-            );
+            eprintln!("LIVE_DIAG apply_us={}", apply_started.elapsed().as_micros());
             #[cfg(feature = "qa")]
             let submit_started = std::time::Instant::now();
             let submit_result = self.submit_live_snapshot(completion, cx);
@@ -358,14 +330,7 @@ impl TaskApp {
         value: TaskEditValue,
         cx: &mut Context<Self>,
     ) -> bool {
-        if !matches!(
-            field,
-            TaskEditField::Labels
-                | TaskEditField::DueDate
-                | TaskEditField::Cycle
-                | TaskEditField::Priority
-                | TaskEditField::Bucket
-        ) {
+        if field != TaskEditField::DueDate {
             self.show_save_error("This property requires the task editor.", cx);
             return false;
         }
@@ -374,25 +339,11 @@ impl TaskApp {
             return false;
         };
         match field {
-            TaskEditField::Labels => {
-                let TaskEditValue::Labels(value) = value else { return false };
-                input.labels = value;
-            }
             TaskEditField::DueDate => {
-                let TaskEditValue::Text(value) = value else { return false };
+                let TaskEditValue::Text(value) = value else {
+                    return false;
+                };
                 input.due_date = value;
-            }
-            TaskEditField::Cycle => {
-                let TaskEditValue::OptionalText(value) = value else { return false };
-                input.cycle = value;
-            }
-            TaskEditField::Priority => {
-                let TaskEditValue::Priority(value) = value else { return false };
-                input.priority = value;
-            }
-            TaskEditField::Bucket => {
-                let TaskEditValue::Text(value) = value else { return false };
-                input.bucket = value;
             }
             _ => unreachable!(),
         }
@@ -465,9 +416,6 @@ impl TaskApp {
             description: task.description.clone(),
             labels: task.labels.clone(),
             due_date: task.due_date.clone(),
-            cycle: task.cycle.clone(),
-            priority: task.priority,
-            bucket: task.bucket.clone(),
             project: Some(task.project_id),
             stage: Some(task.stage),
             stage_intent: intent,
@@ -510,15 +458,10 @@ impl TaskApp {
                 }
             };
             let completion = crate::live_save_app::LiveCompletion::Comment {
-                task: prepared.task,
-                body: prepared.body.clone(),
                 undo: applied.undo.clone(),
             };
             #[cfg(feature = "qa")]
-            eprintln!(
-                "LIVE_DIAG apply_us={}",
-                apply_started.elapsed().as_micros()
-            );
+            eprintln!("LIVE_DIAG apply_us={}", apply_started.elapsed().as_micros());
             #[cfg(feature = "qa")]
             let submit_started = std::time::Instant::now();
             let submit_result = self.submit_live_snapshot(completion, cx);
@@ -537,11 +480,6 @@ impl TaskApp {
                 Ok(crate::live_save_app::SaveAcceptance::Durable) => {
                     self.undo.push_comment(applied.undo.clone());
                     if let Some(window) = window {
-                        let current = self.comment.read(cx).value().trim().to_string();
-                        if self.selected() == Some(prepared.task) && current == prepared.body {
-                            self.comment
-                                .update(cx, |state, cx| state.set_value("", window, cx));
-                        }
                         self.refresh_research_inputs(window, cx);
                     }
                     self.error.clear();
@@ -568,8 +506,6 @@ impl TaskApp {
             }
         };
         let completion = crate::live_save_app::LiveCompletion::Comment {
-            task: prepared.task,
-            body: prepared.body.clone(),
             undo: applied.undo.clone(),
         };
         if let Err(error) = self.live_can_accept_primary() {
@@ -594,21 +530,6 @@ impl TaskApp {
             self.adopt_saved_store(staged);
             self.pending_comment_edit = None;
             if let Some(window) = window {
-                // Clear only the exact draft this save owned. A newer draft typed
-                // after a failed retry, or another task's cached comment, survives.
-                let current = self.comment.read(cx).value().trim().to_string();
-                if self.selected() == Some(prepared.task) && current == prepared.body {
-                    self.comment
-                        .update(cx, |state, cx| state.set_value("", window, cx));
-                }
-                if self
-                    .navigation
-                    .comments
-                    .get(prepared.task)
-                    .is_some_and(|text| text.trim() == prepared.body)
-                {
-                    self.navigation.comments.take(prepared.task);
-                }
                 self.refresh_research_inputs(window, cx);
             }
             self.error.clear();
@@ -632,8 +553,11 @@ impl TaskApp {
         let Some(pending) = self.pending_comment_edit.clone() else {
             return TaskSaveOutcome::Rejected("There is no pending comment to retry.".into());
         };
-        let plan = match prepare_comment_edit(&self.store, pending.prepared.task, &pending.prepared.body)
-        {
+        let plan = match prepare_comment_edit(
+            &self.store,
+            pending.prepared.task,
+            &pending.prepared.body,
+        ) {
             Ok(plan) => plan,
             Err(error) => {
                 let message = scoped_error_text(error);
@@ -653,9 +577,7 @@ impl TaskApp {
             self.research_save_impact = Some(crate::research_input_app::PendingResearchSave {
                 task: prepared.task,
                 impact,
-                prepared: crate::research_input_app::PendingPreparedSave::Comment(
-                    prepared.clone(),
-                ),
+                prepared: crate::research_input_app::PendingPreparedSave::Comment(prepared.clone()),
             });
             self.pending_comment_edit = Some(PendingCommentEdit { prepared });
             self.toast = "The impact changed · review the updated effect before posting".into();
@@ -710,13 +632,11 @@ impl TaskApp {
             self.research_save_impact = Some(crate::research_input_app::PendingResearchSave {
                 task,
                 impact,
-                prepared: crate::research_input_app::PendingPreparedSave::Task(
-                    PreparedTaskSave {
-                        input: pending.prepared.input.clone(),
-                        plan: plan.clone(),
-                        reviewed: pending.prepared.reviewed.clone(),
-                    },
-                ),
+                prepared: crate::research_input_app::PendingPreparedSave::Task(PreparedTaskSave {
+                    input: pending.prepared.input.clone(),
+                    plan: plan.clone(),
+                    reviewed: pending.prepared.reviewed.clone(),
+                }),
             });
             self.pending_task_edit = Some(PendingTaskEdit {
                 prepared: PreparedTaskSave {
@@ -760,19 +680,10 @@ impl TaskApp {
 
     /// Pending TodoBatch eligibility is a live-boundary input the pure plan
     /// cannot see. Check it before preparation and again at commit/retry.
-    fn validate_live_task_edit_eligibility(
-        &self,
-        plan: &TaskEditPlan,
-    ) -> Result<(), String> {
+    fn validate_live_task_edit_eligibility(&self, plan: &TaskEditPlan) -> Result<(), String> {
         let Some(stage) = plan.stage() else {
             return Ok(());
         };
-        if stage.after == crate::domain::Stage::InProgress {
-            return Err(
-                "Save task details first, then submit execution from the status menu."
-                    .into(),
-            );
-        }
         if plan.stage_intent() == StageIntent::Reopen {
             return Ok(());
         }
@@ -785,11 +696,9 @@ fn reviewed_from_input(input: &TaskEditInput) -> TaskEditValues {
     TaskEditValues {
         title: input.title.clone(),
         description: input.description.clone(),
-        labels: input.labels.clone(),
         due_date: input.due_date.clone(),
         project: input.project.unwrap_or_default(),
         stage: input.stage.unwrap_or(crate::domain::Stage::Backlog),
-        cycle: input.cycle.clone(),
     }
 }
 

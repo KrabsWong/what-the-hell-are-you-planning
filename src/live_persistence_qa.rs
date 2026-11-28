@@ -85,22 +85,22 @@ fn run_case(case: &str) -> Result<(), String> {
         "window-reopen" => window_reopen(&root.join("window-reopen")),
         "startup-retry" => startup_self_lock_retry(&root.join("startup-retry")),
         "write-failure-retry" => write_failure_retry(&root.join("write-failure-retry")),
-        "reopened-identical-form" => {
-            reopened_identical_form(&root.join("reopened-identical-form"))
-        }
+        "reopened-identical-form" => reopened_identical_form(&root.join("reopened-identical-form")),
         "dirty-exit-task" => dirty_exit_task_editor(&root.join("dirty-exit-task")),
         "dirty-exit-task-reopen-identical" => {
             dirty_exit_task_reopen_identical(&root.join("dirty-exit-task-reopen"))
         }
         "dirty-exit-automation" => dirty_exit_automation(&root.join("dirty-exit-automation")),
-        "dirty-exit-automation-reopen-identical" => dirty_exit_automation_reopen_identical(
-            &root.join("dirty-exit-automation-reopen"),
-        ),
+        "dirty-exit-automation-reopen-identical" => {
+            dirty_exit_automation_reopen_identical(&root.join("dirty-exit-automation-reopen"))
+        }
         "dirty-exit-planning" => dirty_exit_planning(&root.join("dirty-exit-planning"), false),
         "dirty-exit-planning-cancel" => {
             dirty_exit_planning(&root.join("dirty-exit-planning-cancel"), true)
         }
-        "automation-save-step1" => automation_save_case(&root.join("automation-save-step1"), false, false),
+        "automation-save-step1" => {
+            automation_save_case(&root.join("automation-save-step1"), false, false)
+        }
         "automation-save-finish-step3" => {
             automation_save_case(&root.join("automation-save-step3"), true, false)
         }
@@ -140,9 +140,9 @@ fn run_case(case: &str) -> Result<(), String> {
         "automation-enable-new-quick-leave" => {
             automation_enable_new_quick_leave(&root.join("automation-enable-new-quick-leave"))
         }
-        "automation-rejected-unrelated-command" => automation_rejected_unrelated(
-            &root.join("automation-rejected-unrelated"),
-        ),
+        "automation-rejected-unrelated-command" => {
+            automation_rejected_unrelated(&root.join("automation-rejected-unrelated"))
+        }
         "settings-save" => {
             let (ui, total) = measure_settings_save(&root, "settings-small")?;
             println!("LIVE_PERF settings_save_ui_us={ui} settings_save_total_us={total}");
@@ -165,20 +165,24 @@ fn run_case(case: &str) -> Result<(), String> {
             }
             Ok(())
         }
-        "archive-permanent-delete" => archive_permanent_delete(&root.join("archive-permanent-delete")),
+        "archive-permanent-delete" => {
+            archive_permanent_delete(&root.join("archive-permanent-delete"))
+        }
         "lazy-dependency-view" => lazy_dependency_view(&root.join("lazy-dependency-view")),
         "lazy-research-queue" => lazy_research_queue(&root.join("lazy-research-queue"), "normal"),
-        "lazy-research-queue-retry" => lazy_research_queue(&root.join("lazy-research-queue-retry"), "retry"),
-        "lazy-research-queue-pause" => lazy_research_queue(&root.join("lazy-research-queue-pause"), "pause"),
+        "lazy-research-queue-retry" => {
+            lazy_research_queue(&root.join("lazy-research-queue-retry"), "retry")
+        }
+        "lazy-research-queue-pause" => {
+            lazy_research_queue(&root.join("lazy-research-queue-pause"), "pause")
+        }
         "lazy-period-hydration" => lazy_period_hydrates_on_open(&root.join("lazy-period")),
         "lazy-body-missing-retry" => lazy_body_missing_and_retry(&root.join("lazy-missing")),
         "lazy-latest-failed" => lazy_latest_attempt_invalidates(&root.join("lazy-failed")),
         "t04-automation-lifecycle-undo" => {
             t04_automation_lifecycle_undo(&root.join("t04-lifecycle-undo"))
         }
-        "t15-incremental-sql-audit" => {
-            t15_incremental_sql_audit(&root.join("t15-sql-audit"))
-        }
+        "t15-incremental-sql-audit" => t15_incremental_sql_audit(&root.join("t15-sql-audit")),
         "history-43200" => {
             let elapsed = measure_history(&root, "history-43200", 43_200)?;
             println!("LIVE_PERF history_page_43200_us={elapsed}");
@@ -220,7 +224,10 @@ pub fn run() {
             }
         }
         if failures.is_empty() {
-            println!("LIVE_PERSISTENCE_QA status=ok sequential=1 root={}", root.display());
+            println!(
+                "LIVE_PERSISTENCE_QA status=ok sequential=1 root={}",
+                root.display()
+            );
         } else {
             eprintln!(
                 "LIVE_PERSISTENCE_QA status=failed sequential=1 error={}",
@@ -298,13 +305,7 @@ fn open_live(root: &Path, path: &Path) -> Result<Fixture, String> {
         .open_window(size(px(1400.), px(900.)), |w, cx| {
             let view = cx.new(|cx| TaskApp::new_mock(w, cx));
             view.update(cx, |a, cx| {
-                a.attach_loaded_storage_live(
-                    storage,
-                    Ok((lock, store)),
-                    Some(live.clone()),
-                    w,
-                    cx,
-                );
+                a.attach_loaded_storage_live(storage, Ok((lock, store)), Some(live.clone()), w, cx);
                 assert!(
                     a.live_required,
                     "live QA fixture must require the incremental backend"
@@ -320,8 +321,10 @@ fn open_live(root: &Path, path: &Path) -> Result<Fixture, String> {
         .map_err(|error| format!("open window failed: {error:?}"))?;
     let app = app.ok_or("live app was not created")?;
     let mut cx = cx;
-    cx.update_window(window.into(), |_, w, cx| app.update(cx, |a, cx| a.poll_runtime(cx)))
-        .map_err(|error| format!("initial pump failed: {error:?}"))?;
+    cx.update_window(window.into(), |_, w, cx| {
+        app.update(cx, |a, cx| a.poll_runtime(cx))
+    })
+    .map_err(|error| format!("initial pump failed: {error:?}"))?;
     Ok((cx, window.into(), app))
 }
 
@@ -349,7 +352,6 @@ fn pump_until(
         std::thread::sleep(Duration::from_millis(5));
     }
 }
-
 
 fn advance_until(
     cx: &mut HeadlessAppContext,
@@ -468,7 +470,7 @@ fn core_save_and_ack(root: &Path) -> Result<(), String> {
     let mut store = Store::empty();
     store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
     let task = store
-        .create_task("Live task", 1, Stage::Planned, None)
+        .create_task("Live task", 1, Stage::InProgress, None)
         .map_err(|error| error.to_string())?;
     let path = seed_store(root, &store)?;
     let (mut cx, handle, app) = open_live(root, &path)?;
@@ -495,7 +497,11 @@ fn core_save_and_ack(root: &Path) -> Result<(), String> {
     }
     let (toast, undo_now, primary) = cx.update(|cx| {
         let app = app.read(cx);
-        (app.toast.clone(), app.undo.len(), app.live_primary.is_some())
+        (
+            app.toast.clone(),
+            app.undo.len(),
+            app.live_primary.is_some(),
+        )
     });
     if primary {
         assert_eq!(undo_now, undo_before, "pending save must not push Undo yet");
@@ -577,7 +583,9 @@ fn core_save_and_ack(root: &Path) -> Result<(), String> {
         .map_err(|error| format!("overlap editor save failed: {error:?}"))?;
     let comment_accepted = cx
         .update_window(handle, |_, w, cx| {
-            app.update(cx, |a, cx| a.request_task_comment(task, "Overlap comment", w, cx))
+            app.update(cx, |a, cx| {
+                a.request_task_comment(task, "Overlap comment", w, cx)
+            })
         })
         .map_err(|error| format!("overlap comment failed: {error:?}"))?;
     let (title_after, approval_after, comments_after) = cx.update(|cx| {
@@ -718,7 +726,7 @@ fn reopen_after_quit(root: &Path) -> Result<(), String> {
 
 fn updated_task(store: &mut Store) -> u64 {
     store
-        .create_task("Perf task", 1, Stage::Planned, None)
+        .create_task("Perf task", 1, Stage::InProgress, None)
         .expect("perf task")
 }
 
@@ -846,12 +854,8 @@ fn write_failure_retry(root: &Path) -> Result<(), String> {
     pump_until(&mut cx, handle, &app, "retry durable receipt", |a| {
         !a.live_has_pending_receipts() && a.live_failure.is_none()
     })?;
-    let (undo_after, disk_after) = cx.update(|cx| {
-        (
-            app.read(cx).undo.len(),
-            read_v4_store(root, &path).ok(),
-        )
-    });
+    let (undo_after, disk_after) =
+        cx.update(|cx| (app.read(cx).undo.len(), read_v4_store(root, &path).ok()));
     if undo_after != undo_before + 1 {
         return Err(format!(
             "retry did not apply exactly one Undo: before={undo_before} after={undo_after}"
@@ -936,11 +940,9 @@ fn reopened_identical_form(root: &Path) -> Result<(), String> {
 }
 
 fn exit_target() -> crate::draft_exit::ExitTarget {
-    crate::draft_exit::ExitTarget::Navigate(
-        crate::navigation_context::NavigationTarget::Research {
-            scope: crate::app::Scope::All,
-        },
-    )
+    crate::draft_exit::ExitTarget::Navigate(crate::navigation_context::NavigationTarget::Research {
+        scope: crate::app::Scope::All,
+    })
 }
 
 fn dirty_exit_task_editor(root: &Path) -> Result<(), String> {
@@ -994,7 +996,9 @@ fn dirty_exit_task_editor(root: &Path) -> Result<(), String> {
         )
     });
     if scope != crate::app::Scope::All {
-        return Err(format!("task exit did not proceed after ACK: scope={scope:?}"));
+        return Err(format!(
+            "task exit did not proceed after ACK: scope={scope:?}"
+        ));
     }
     if draft {
         return Err("task exit left the saved editor open after ACK".into());
@@ -1050,7 +1054,9 @@ fn dirty_exit_task_reopen_identical(root: &Path) -> Result<(), String> {
                 .unwrap_or(0),
         )
     });
-    if scope != crate::app::Scope::Project(1) || !draft || value.as_deref() != Some("Identical exit")
+    if scope != crate::app::Scope::Project(1)
+        || !draft
+        || value.as_deref() != Some("Identical exit")
     {
         return Err(format!(
             "stale task ACK navigated/closed a newer identical editor: scope={scope:?} open={draft} value={value:?}"
@@ -1155,9 +1161,13 @@ fn dirty_exit_automation(root: &Path) -> Result<(), String> {
             "live pending automation exit was reported as failure before its receipt: {error:?}"
         ));
     }
-    pump_until(&mut cx, handle, &app, "dirty automation exit receipt", |a| {
-        !a.live_has_pending_receipts() && a.navigation.pending_exit.is_none()
-    })?;
+    pump_until(
+        &mut cx,
+        handle,
+        &app,
+        "dirty automation exit receipt",
+        |a| !a.live_has_pending_receipts() && a.navigation.pending_exit.is_none(),
+    )?;
     let (count, wizard, error) = cx.update(|cx| {
         let a = app.read(cx);
         (
@@ -1308,8 +1318,10 @@ fn automation_rejected_unrelated(root: &Path) -> Result<(), String> {
             ));
             assert!(a.live_primary.is_some());
             let outcome = a.save_automation_draft_outcome(cx);
-            rejected =
-                matches!(outcome, crate::automation_views::AutomationSaveOutcome::Rejected(_));
+            rejected = matches!(
+                outcome,
+                crate::automation_views::AutomationSaveOutcome::Rejected(_)
+            );
         });
         w.render_frame(cx);
     })
@@ -1317,15 +1329,15 @@ fn automation_rejected_unrelated(root: &Path) -> Result<(), String> {
     if !rejected {
         return Err("busy automation save was not rejected".into());
     }
-    let marker_after_reject = cx.update(|cx| {
-        app.read(cx)
-            .navigation
-            .pending_automation_save
-            .is_some()
-    });
-    pump_until(&mut cx, handle, &app, "settings ACK before unrelated", |a| {
-        !a.live_has_pending_receipts()
-    })?;
+    let marker_after_reject =
+        cx.update(|cx| app.read(cx).navigation.pending_automation_save.is_some());
+    pump_until(
+        &mut cx,
+        handle,
+        &app,
+        "settings ACK before unrelated",
+        |a| !a.live_has_pending_receipts(),
+    )?;
     let unrelated = cx
         .update_window(handle, |_, _, cx| {
             app.update(cx, |a, cx| {
@@ -1380,7 +1392,11 @@ fn automation_rejected_unrelated(root: &Path) -> Result<(), String> {
 }
 
 fn automation_generate_plan_async(root: &Path, unchanged: bool) -> Result<(), String> {
-    let expected = if unchanged { "Expected old" } else { "Expected new revision" };
+    let expected = if unchanged {
+        "Expected old"
+    } else {
+        "Expected new revision"
+    };
     std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
     let template = crate::automation_execution::build_template("Plan async", "Expected old")?;
     let mut store = Store::empty();
@@ -1404,13 +1420,18 @@ fn automation_generate_plan_async(root: &Path, unchanged: bool) -> Result<(), St
         .map_err(|error| error.to_string())?;
     let path = seed_store(root, &store)?;
     let (mut cx, handle, app) = open_live(root, &path)?;
-    cx.update(|cx| app.update(cx, |a, _| {
-        a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
-    }));
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
     let (version_before, requests_before, runs_before) = cx.update(|cx| {
         let a = app.read(cx);
         (
-            a.store.automation(id).map(|definition| definition.version).unwrap_or(0),
+            a.store
+                .automation(id)
+                .map(|definition| definition.version)
+                .unwrap_or(0),
             a.store.research_requests().len(),
             a.store.runs().len(),
         )
@@ -1494,7 +1515,9 @@ fn automation_generate_plan_async(root: &Path, unchanged: bool) -> Result<(), St
                 a.live_has_pending_receipts(),
             )
         });
-        return Err(format!("durable draft never started exactly one planner run: {state}"));
+        return Err(format!(
+            "durable draft never started exactly one planner run: {state}"
+        ));
     }
     let (version_after, request, run_id, planning_run, step_after, feedback_after) =
         cx.update(|cx| {
@@ -1506,7 +1529,10 @@ fn automation_generate_plan_async(root: &Path, unchanged: bool) -> Result<(), St
                 .find(|request| request.automation_id == Some(id))
                 .cloned();
             (
-                a.store.automation(id).map(|definition| definition.version).unwrap_or(0),
+                a.store
+                    .automation(id)
+                    .map(|definition| definition.version)
+                    .unwrap_or(0),
                 request,
                 a.store
                     .runs()
@@ -1576,7 +1602,6 @@ fn automation_generate_plan_async(root: &Path, unchanged: bool) -> Result<(), St
     Ok(())
 }
 
-
 fn seed_planned_research_draft(root: &Path) -> Result<(u64, PathBuf), String> {
     std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
     let template = crate::automation_execution::build_template("Plan async", "Expected old")?;
@@ -1644,9 +1669,11 @@ fn start_generate_plan_click(
 fn automation_generate_plan_retry(root: &Path) -> Result<(), String> {
     let (id, path) = seed_planned_research_draft(root)?;
     let (mut cx, handle, app) = open_live(root, &path)?;
-    cx.update(|cx| app.update(cx, |a, _| {
-        a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
-    }));
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
     let (version_before, requests_before, runs_before) = cx.update(|cx| {
         let a = app.read(cx);
         (
@@ -1697,7 +1724,11 @@ fn automation_generate_plan_retry(root: &Path) -> Result<(), String> {
             a.store.runs().len(),
         )
     });
-    if !pending_failed || planning_failed || requests_failed != requests_before || runs_failed != runs_before {
+    if !pending_failed
+        || planning_failed
+        || requests_failed != requests_before
+        || runs_failed != runs_before
+    {
         return Err(format!(
             "failed save lost/consumed planning intent: pending={pending_failed} run={planning_failed} requests={requests_failed} runs={runs_failed}"
         ));
@@ -1755,9 +1786,11 @@ fn automation_generate_plan_retry(root: &Path) -> Result<(), String> {
 fn automation_generate_plan_cancel(root: &Path) -> Result<(), String> {
     let (id, path) = seed_planned_research_draft(root)?;
     let (mut cx, handle, app) = open_live(root, &path)?;
-    cx.update(|cx| app.update(cx, |a, _| {
-        a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
-    }));
+    cx.update(|cx| {
+        app.update(cx, |a, _| {
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
+        })
+    });
     let (requests_before, runs_before) = cx.update(|cx| {
         let a = app.read(cx);
         (a.store.research_requests().len(), a.store.runs().len())
@@ -1789,7 +1822,12 @@ fn automation_generate_plan_cancel(root: &Path) -> Result<(), String> {
     })?;
     let (requests_after, runs_after, creating_after, route_after) = cx.update(|cx| {
         let a = app.read(cx);
-        (a.store.research_requests().len(), a.store.runs().len(), a.automation_ui.creating, a.automation_ui.selected)
+        (
+            a.store.research_requests().len(),
+            a.store.runs().len(),
+            a.automation_ui.creating,
+            a.automation_ui.selected,
+        )
     });
     if requests_after != requests_before || runs_after != runs_before {
         return Err(format!(
@@ -1802,9 +1840,8 @@ fn automation_generate_plan_cancel(root: &Path) -> Result<(), String> {
         ));
     }
     // Edit/new form while waiting must also clear intent and avoid launch.
-    let (_, pending, _, _) = start_generate_plan_click(
-        &mut cx, handle, &app, id, "Expected third revision",
-    )?;
+    let (_, pending, _, _) =
+        start_generate_plan_click(&mut cx, handle, &app, id, "Expected third revision")?;
     if !pending {
         return Err("new-form cancellation fixture did not enter an async wait".into());
     }
@@ -1834,10 +1871,7 @@ fn automation_generate_plan_cancel(root: &Path) -> Result<(), String> {
 
 fn automation_enable_after_plan(root: &Path) -> Result<(), String> {
     std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
-    let template = crate::automation_execution::build_template(
-        "Enable plan",
-        "Expected result",
-    )?;
+    let template = crate::automation_execution::build_template("Enable plan", "Expected result")?;
     let mut store = Store::empty();
     store.set_default_model("fixture/model".into());
     store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
@@ -1861,8 +1895,7 @@ fn automation_enable_after_plan(root: &Path) -> Result<(), String> {
     let (mut cx, handle, app) = open_live(root, &path)?;
     cx.update(|cx| {
         app.update(cx, |a, _| {
-            a.qa_dispatch_fake =
-                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
         })
     });
     cx.update_window(handle, |_, w, cx| {
@@ -1954,8 +1987,7 @@ fn automation_enable_new_quick(root: &Path) -> Result<(), String> {
     let (mut cx, handle, app) = open_live(root, &path)?;
     cx.update(|cx| {
         app.update(cx, |a, _| {
-            a.qa_dispatch_fake =
-                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
         })
     });
     cx.update_window(handle, |_, w, cx| {
@@ -2023,10 +2055,8 @@ fn automation_enable_new_quick(root: &Path) -> Result<(), String> {
 }
 
 fn enabled_quick_store(root: &Path) -> Result<(Store, u64), String> {
-    let template = crate::automation_execution::build_quick_template(
-        "Check one value",
-        "One answer",
-    )?;
+    let template =
+        crate::automation_execution::build_quick_template("Check one value", "One answer")?;
     let mut store = Store::empty();
     store.set_default_model("fixture/model".into());
     store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
@@ -2059,18 +2089,14 @@ fn automation_pause_navigate_away(root: &Path) -> Result<(), String> {
     let (mut cx, handle, app) = open_live(root, &path)?;
     cx.update(|cx| {
         app.update(cx, |a, _| {
-            a.qa_dispatch_fake =
-                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
         })
     });
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| {
             a.automation_ui.selected = Some(id);
             a.automation_ui.creating = false;
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(true);
+            a.dispatch_admission.as_ref().unwrap().set_hold(true);
             a.pause_automation_ui(id, cx);
             assert!(
                 a.automation_ui.automation_command_inflight.is_some(),
@@ -2090,12 +2116,7 @@ fn automation_pause_navigate_away(root: &Path) -> Result<(), String> {
                 workspace,
                 completions: vec![crate::live_save_app::LiveCompletion::None],
             });
-            a.on_live_failure(
-                9_999,
-                1,
-                "injected unrelated followup failure".into(),
-                cx,
-            );
+            a.on_live_failure(9_999, 1, "injected unrelated followup failure".into(), cx);
             assert!(
                 a.automation_ui.automation_command_inflight.is_some(),
                 "unrelated followup failure released the pause in-flight guard"
@@ -2104,17 +2125,13 @@ fn automation_pause_navigate_away(root: &Path) -> Result<(), String> {
             a.live_failure = None;
             a.storage_error.clear();
             a.live_retry_at = None;
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(false);
+            a.dispatch_admission.as_ref().unwrap().set_hold(false);
         });
         w.render_frame(cx);
     })
     .map_err(|error| format!("pause/navigate fixture failed: {error:?}"))?;
     advance_until(&mut cx, &app, "pause delayed ACK", |a| {
-        !a.live_has_pending_receipts()
-            && a.automation_ui.automation_command_inflight.is_none()
+        !a.live_has_pending_receipts() && a.automation_ui.automation_command_inflight.is_none()
     })?;
     let (creating, objective, feedback, selected) = cx.update(|cx| {
         let a = app.read(cx);
@@ -2149,10 +2166,7 @@ fn automation_pause_navigate_away(root: &Path) -> Result<(), String> {
 
 fn automation_enable_duplicate(root: &Path) -> Result<(), String> {
     std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
-    let template = crate::automation_execution::build_template(
-        "Enable plan",
-        "Expected result",
-    )?;
+    let template = crate::automation_execution::build_template("Enable plan", "Expected result")?;
     let mut store = Store::empty();
     store.set_default_model("fixture/model".into());
     store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
@@ -2172,13 +2186,15 @@ fn automation_enable_duplicate(root: &Path) -> Result<(), String> {
             1_700_000_000,
         )
         .map_err(|error| error.to_string())?;
-    let before = store.automation(id).map(|definition| definition.version).unwrap_or(0);
+    let before = store
+        .automation(id)
+        .map(|definition| definition.version)
+        .unwrap_or(0);
     let path = seed_store(root, &store)?;
     let (mut cx, handle, app) = open_live(root, &path)?;
     cx.update(|cx| {
         app.update(cx, |a, _| {
-            a.qa_dispatch_fake =
-                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
         })
     });
     cx.update_window(handle, |_, w, cx| {
@@ -2187,10 +2203,7 @@ fn automation_enable_duplicate(root: &Path) -> Result<(), String> {
             a.automation_ui.plan = a.store.automation(id).and_then(|d| d.template.clone());
             a.automation_wizard_next(w, cx);
             a.automation_wizard_next(w, cx);
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(true);
+            a.dispatch_admission.as_ref().unwrap().set_hold(true);
             a.enable_automation(cx);
             assert!(
                 a.automation_ui.automation_command_inflight.is_some(),
@@ -2205,10 +2218,7 @@ fn automation_enable_duplicate(root: &Path) -> Result<(), String> {
                     .is_some_and(|message| message.contains("Wait for the pending")),
                 "duplicate enable must be rejected while the receipt is pending"
             );
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(false);
+            a.dispatch_admission.as_ref().unwrap().set_hold(false);
         });
         w.render_frame(cx);
     })
@@ -2224,7 +2234,9 @@ fn automation_enable_duplicate(root: &Path) -> Result<(), String> {
                 .is_some_and(|message| message.starts_with("Enabled"))
     })?;
     let disk = read_v4_store(root, &path)?;
-    let definition = disk.automation(id).ok_or("duplicate enable lost the automation")?;
+    let definition = disk
+        .automation(id)
+        .ok_or("duplicate enable lost the automation")?;
     if definition.version != before
         || definition.status != crate::automation::DefinitionStatus::Enabled
     {
@@ -2239,10 +2251,7 @@ fn automation_enable_duplicate(root: &Path) -> Result<(), String> {
 
 fn automation_enable_same_form_edit(root: &Path) -> Result<(), String> {
     std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
-    let template = crate::automation_execution::build_template(
-        "Enable plan",
-        "Expected result",
-    )?;
+    let template = crate::automation_execution::build_template("Enable plan", "Expected result")?;
     let mut store = Store::empty();
     store.set_default_model("fixture/model".into());
     store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
@@ -2266,8 +2275,7 @@ fn automation_enable_same_form_edit(root: &Path) -> Result<(), String> {
     let (mut cx, handle, app) = open_live(root, &path)?;
     cx.update(|cx| {
         app.update(cx, |a, _| {
-            a.qa_dispatch_fake =
-                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
         })
     });
     cx.update_window(handle, |_, w, cx| {
@@ -2276,27 +2284,20 @@ fn automation_enable_same_form_edit(root: &Path) -> Result<(), String> {
             a.automation_ui.plan = a.store.automation(id).and_then(|d| d.template.clone());
             a.automation_wizard_next(w, cx);
             a.automation_wizard_next(w, cx);
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(true);
+            a.dispatch_admission.as_ref().unwrap().set_hold(true);
             a.enable_automation(cx);
             assert!(a.automation_ui.automation_command_inflight.is_some());
             // Same form, newer field edit while the receipt is pending.
             a.automation_ui.objective.update(cx, |state, cx| {
                 state.set_value("Edited while pending", w, cx);
             });
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(false);
+            a.dispatch_admission.as_ref().unwrap().set_hold(false);
         });
         w.render_frame(cx);
     })
     .map_err(|error| format!("same-form enable fixture failed: {error:?}"))?;
     advance_until(&mut cx, &app, "same-form enable ACK", |a| {
-        !a.live_has_pending_receipts()
-            && a.automation_ui.automation_command_inflight.is_none()
+        !a.live_has_pending_receipts() && a.automation_ui.automation_command_inflight.is_none()
     })?;
     let (creating, objective, feedback, dirty) = cx.update(|cx| {
         let a = app.read(cx);
@@ -2322,7 +2323,9 @@ fn automation_enable_same_form_edit(root: &Path) -> Result<(), String> {
         ));
     }
     let disk = read_v4_store(root, &path)?;
-    let definition = disk.automation(id).ok_or("same-form enable lost the automation")?;
+    let definition = disk
+        .automation(id)
+        .ok_or("same-form enable lost the automation")?;
     if definition.status != crate::automation::DefinitionStatus::Enabled
         || definition.objective != "Objective old"
     {
@@ -2344,8 +2347,7 @@ fn automation_enable_new_quick_edit(root: &Path) -> Result<(), String> {
     let (mut cx, handle, app) = open_live(root, &path)?;
     cx.update(|cx| {
         app.update(cx, |a, _| {
-            a.qa_dispatch_fake =
-                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
         })
     });
     cx.update_window(handle, |_, w, cx| {
@@ -2363,26 +2365,19 @@ fn automation_enable_new_quick_edit(root: &Path) -> Result<(), String> {
             a.automation_wizard_next(w, cx);
             a.automation_wizard_next(w, cx);
             assert!(a.automation_ui.editing.is_none());
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(true);
+            a.dispatch_admission.as_ref().unwrap().set_hold(true);
             a.enable_automation(cx);
             assert!(a.automation_ui.automation_command_inflight.is_some());
             a.automation_ui.objective.update(cx, |state, cx| {
                 state.set_value("Edited while pending", w, cx);
             });
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(false);
+            a.dispatch_admission.as_ref().unwrap().set_hold(false);
         });
         w.render_frame(cx);
     })
     .map_err(|error| format!("new Quick edit fixture failed: {error:?}"))?;
     advance_until(&mut cx, &app, "new Quick edit ACK", |a| {
-        !a.live_has_pending_receipts()
-            && a.automation_ui.automation_command_inflight.is_none()
+        !a.live_has_pending_receipts() && a.automation_ui.automation_command_inflight.is_none()
     })?;
     let (creating, editing, selected, objective, dirty) = cx.update(|cx| {
         let a = app.read(cx);
@@ -2448,8 +2443,7 @@ fn automation_enable_new_quick_leave(root: &Path) -> Result<(), String> {
     let (mut cx, handle, app) = open_live(root, &path)?;
     cx.update(|cx| {
         app.update(cx, |a, _| {
-            a.qa_dispatch_fake =
-                Some(crate::dispatch_admission::FakeDispatchRunner::default());
+            a.qa_dispatch_fake = Some(crate::dispatch_admission::FakeDispatchRunner::default());
         })
     });
     cx.update_window(handle, |_, w, cx| {
@@ -2463,10 +2457,7 @@ fn automation_enable_new_quick_leave(root: &Path) -> Result<(), String> {
             });
             a.automation_wizard_next(w, cx);
             a.automation_wizard_next(w, cx);
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(true);
+            a.dispatch_admission.as_ref().unwrap().set_hold(true);
             a.enable_automation(cx);
             // Leave the originating wizard and open a different new form
             // before the durable ACK returns.
@@ -2474,17 +2465,13 @@ fn automation_enable_new_quick_leave(root: &Path) -> Result<(), String> {
             a.automation_ui.objective.update(cx, |state, cx| {
                 state.set_value("Second draft", w, cx);
             });
-            a.dispatch_admission
-                .as_ref()
-                .unwrap()
-                .set_hold(false);
+            a.dispatch_admission.as_ref().unwrap().set_hold(false);
         });
         w.render_frame(cx);
     })
     .map_err(|error| format!("new Quick leave fixture failed: {error:?}"))?;
     advance_until(&mut cx, &app, "new Quick leave ACK", |a| {
-        !a.live_has_pending_receipts()
-            && a.automation_ui.automation_command_inflight.is_none()
+        !a.live_has_pending_receipts() && a.automation_ui.automation_command_inflight.is_none()
     })?;
     let (creating, editing, selected, objective, feedback) = cx.update(|cx| {
         let a = app.read(cx);
@@ -2596,14 +2583,24 @@ fn automation_save_case(root: &Path, finish_step3: bool, newer_form: bool) -> Re
             ));
         }
         if finish_step3 && step_seen != 3 {
-            return Err(format!("Save draft & finish was not on step 3: step={step_seen}"));
+            return Err(format!(
+                "Save draft & finish was not on step 3: step={step_seen}"
+            ));
         }
     }
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok(())
 }
 
-fn automation_snapshot(store: &Store) -> (Vec<crate::automation::AutomationDefinition>, Vec<crate::automation::AutomationOccurrence>, Vec<AgentRun>, u64, u64) {
+fn automation_snapshot(
+    store: &Store,
+) -> (
+    Vec<crate::automation::AutomationDefinition>,
+    Vec<crate::automation::AutomationOccurrence>,
+    Vec<AgentRun>,
+    u64,
+    u64,
+) {
     (
         store.automations().to_vec(),
         store.all_occurrences().to_vec(),
@@ -2613,7 +2610,12 @@ fn automation_snapshot(store: &Store) -> (Vec<crate::automation::AutomationDefin
     )
 }
 
-fn finish_pending(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, app: &Entity<TaskApp>, label: &str) -> Result<(), String> {
+fn finish_pending(
+    cx: &mut HeadlessAppContext,
+    handle: AnyWindowHandle,
+    app: &Entity<TaskApp>,
+    label: &str,
+) -> Result<(), String> {
     pump_until(cx, handle, app, label, |a| !a.live_has_pending_receipts())
 }
 
@@ -2657,9 +2659,9 @@ fn prepare_paused_automation(
     .map_err(|error| format!("automation enable failed: {error:?}"))?;
     pump_until(cx, handle, app, "automation enabled", |a| {
         !a.live_has_pending_receipts()
-            && a.store
-                .automation(id)
-                .is_some_and(|definition| definition.status == crate::automation::DefinitionStatus::Enabled)
+            && a.store.automation(id).is_some_and(|definition| {
+                definition.status == crate::automation::DefinitionStatus::Enabled
+            })
     })?;
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| a.pause_automation_ui(id, cx));
@@ -2667,9 +2669,9 @@ fn prepare_paused_automation(
     .map_err(|error| format!("automation pause failed: {error:?}"))?;
     pump_until(cx, handle, app, "automation paused", |a| {
         !a.live_has_pending_receipts()
-            && a.store
-                .automation(id)
-                .is_some_and(|definition| definition.status == crate::automation::DefinitionStatus::Paused)
+            && a.store.automation(id).is_some_and(|definition| {
+                definition.status == crate::automation::DefinitionStatus::Paused
+            })
     })?;
     Ok(id)
 }
@@ -2719,11 +2721,9 @@ fn semantic_automation_view(store: &Store) -> Result<serde_json::Value, String> 
 }
 
 fn body_bytes_audit(path: &Path) -> Result<(usize, String), String> {
-    let conn = rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| error.to_string())?;
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| error.to_string())?;
     sql_hash(&conn, "SELECT run_id,body FROM run_bodies ORDER BY run_id")
 }
 
@@ -2767,8 +2767,7 @@ fn t04_automation_lifecycle_undo(root: &Path) -> Result<(), String> {
     if memory_before.1.len() != seeded.1.len() || memory_before.2.len() != seeded.2.len() {
         return Err("enabling a paused automation changed seeded occurrence/run history".into());
     }
-    let memory_semantics =
-        cx.update(|cx| semantic_automation_view(&app.read(cx).store))?;
+    let memory_semantics = cx.update(|cx| semantic_automation_view(&app.read(cx).store))?;
     let disk_before_store = read_v4_store(root, &path)?;
     let disk_before = automation_snapshot(&disk_before_store);
     let disk_semantics = semantic_automation_view(&disk_before_store)?;
@@ -2791,11 +2790,7 @@ fn t04_automation_lifecycle_undo(root: &Path) -> Result<(), String> {
         let task = a.store.task(task).unwrap();
         (
             task.title.clone(),
-            (
-                task.stage,
-                task.labels.clone(),
-                task.approved_plan.clone(),
-            ),
+            (task.stage, task.labels.clone(), task.approved_plan.clone()),
             automation_snapshot(&a.store),
         )
     });
@@ -2840,25 +2835,29 @@ fn t04_automation_lifecycle_undo(root: &Path) -> Result<(), String> {
         .automation(new_id)
         .ok_or("new automation missing from reopened disk")?;
     if paused.status != crate::automation::DefinitionStatus::Paused {
-        return Err(format!("new automation status changed: {:?}", paused.status));
+        return Err(format!(
+            "new automation status changed: {:?}",
+            paused.status
+        ));
     }
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok(())
 }
 
 fn assert_history_seeded(path: &Path) -> Result<(), String> {
-    let conn = rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| error.to_string())?;
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| error.to_string())?;
     for (table, sql) in [
         (
             "automation_occurrences",
             "SELECT COUNT(*) FROM automation_occurrences",
         ),
         ("runs", "SELECT COUNT(*) FROM runs"),
-        ("run_bodies", "SELECT COUNT(*) FROM run_bodies WHERE length(body)>0"),
+        (
+            "run_bodies",
+            "SELECT COUNT(*) FROM run_bodies WHERE length(body)>0",
+        ),
         (
             "occurrence_snapshots",
             "SELECT COUNT(*) FROM occurrence_snapshots",
@@ -2885,7 +2884,8 @@ fn sql_hash(conn: &rusqlite::Connection, sql: &str) -> Result<(usize, String), S
     while let Some(row) = rows.next().map_err(|error| error.to_string())? {
         count += 1;
         for index in 0..column_count {
-            let value: rusqlite::types::Value = row.get(index).map_err(|error| error.to_string())?;
+            let value: rusqlite::types::Value =
+                row.get(index).map_err(|error| error.to_string())?;
             hash.update(format!("{value:?}\x1f"));
         }
         hash.update(b"\n");
@@ -2894,23 +2894,39 @@ fn sql_hash(conn: &rusqlite::Connection, sql: &str) -> Result<(usize, String), S
 }
 
 fn sql_audit(path: &Path) -> Result<serde_json::Value, String> {
-    let conn = rusqlite::Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| error.to_string())?;
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| error.to_string())?;
     let tables = [
-        ("automations", "SELECT id,status,updated_at,payload FROM automations ORDER BY id"),
-        ("occurrences", "SELECT id,automation_id,status,unread,trigger_key,snapshot_hash,payload FROM automation_occurrences ORDER BY id"),
-        ("runs", "SELECT id,task_id,occurrence_id,status,has_body,body_bytes,payload FROM runs ORDER BY id"),
-        ("run_bodies", "SELECT run_id,body FROM run_bodies ORDER BY run_id"),
-        ("occurrence_snapshots", "SELECT hash,payload,refs FROM occurrence_snapshots ORDER BY hash"),
+        (
+            "automations",
+            "SELECT id,status,updated_at,payload FROM automations ORDER BY id",
+        ),
+        (
+            "occurrences",
+            "SELECT id,automation_id,status,unread,trigger_key,snapshot_hash,payload FROM automation_occurrences ORDER BY id",
+        ),
+        (
+            "runs",
+            "SELECT id,task_id,occurrence_id,status,has_body,body_bytes,payload FROM runs ORDER BY id",
+        ),
+        (
+            "run_bodies",
+            "SELECT run_id,body FROM run_bodies ORDER BY run_id",
+        ),
+        (
+            "occurrence_snapshots",
+            "SELECT hash,payload,refs FROM occurrence_snapshots ORDER BY hash",
+        ),
         ("tasks", "SELECT id,stage,payload FROM tasks ORDER BY id"),
     ];
     let mut out = serde_json::Map::new();
     for (name, sql) in tables {
         let (count, hash) = sql_hash(&conn, sql)?;
-        out.insert(name.into(), serde_json::json!({"rows": count, "sha256": hash}));
+        out.insert(
+            name.into(),
+            serde_json::json!({"rows": count, "sha256": hash}),
+        );
     }
     Ok(serde_json::Value::Object(out))
 }
@@ -3047,22 +3063,34 @@ fn install_write_audit(path: &Path) -> Result<(), String> {
 }
 
 fn audit_marker(path: &Path) -> Result<i64, String> {
-    let conn = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| error.to_string())?;
-    conn.query_row("SELECT COALESCE(MAX(seq),0) FROM qa_write_audit", [], |row| row.get(0))
-        .map_err(|error| error.to_string())
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| error.to_string())?;
+    conn.query_row(
+        "SELECT COALESCE(MAX(seq),0) FROM qa_write_audit",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn audit_since(path: &Path, marker: i64) -> Result<Vec<(String, String, String)>, String> {
-    let conn = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| error.to_string())?;
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| error.to_string())?;
     let mut statement = conn
         .prepare("SELECT table_name,op,row_id FROM qa_write_audit WHERE seq>?1 ORDER BY seq")
         .map_err(|error| error.to_string())?;
-    let mut rows = statement.query([marker]).map_err(|error| error.to_string())?;
+    let mut rows = statement
+        .query([marker])
+        .map_err(|error| error.to_string())?;
     let mut out = Vec::new();
     while let Some(row) = rows.next().map_err(|error| error.to_string())? {
-        out.push((row.get(0).map_err(|e| e.to_string())?, row.get(1).map_err(|e| e.to_string())?, row.get(2).map_err(|e| e.to_string())?));
+        out.push((
+            row.get(0).map_err(|e| e.to_string())?,
+            row.get(1).map_err(|e| e.to_string())?,
+            row.get(2).map_err(|e| e.to_string())?,
+        ));
     }
     Ok(out)
 }
@@ -3105,13 +3133,18 @@ fn audit_summary(writes: &[(String, String, String)]) -> String {
         .join(",")
 }
 
-fn assert_no_history_writes(writes: &[(String, String, String)], label: &str) -> Result<(), String> {
+fn assert_no_history_writes(
+    writes: &[(String, String, String)],
+    label: &str,
+) -> Result<(), String> {
     for (table, op, row) in writes {
         if matches!(
             table.as_str(),
             "automation_occurrences" | "runs" | "run_bodies" | "occurrence_snapshots"
         ) {
-            return Err(format!("{label} rewrote historical {table} row {row} via {op}"));
+            return Err(format!(
+                "{label} rewrote historical {table} row {row} via {op}"
+            ));
         }
     }
     Ok(())
@@ -3125,7 +3158,12 @@ fn t15_incremental_sql_audit(root: &Path) -> Result<(), String> {
     let id = prepare_paused_automation(&mut cx, handle, &app, "T15 audit check")?;
     let original = cx.update(|cx| {
         let task = app.read(cx).store.task(task).unwrap();
-        (task.title.clone(), task.stage, task.labels.clone(), task.approved_plan.clone())
+        (
+            task.title.clone(),
+            task.stage,
+            task.labels.clone(),
+            task.approved_plan.clone(),
+        )
     });
 
     let marker = audit_marker(&path)?;
@@ -3147,7 +3185,10 @@ fn t15_incremental_sql_audit(root: &Path) -> Result<(), String> {
                 .is_some_and(|definition| definition.name == "Renamed automation audit")
     })?;
     let rename_writes = audit_since(&path, marker)?;
-    println!("LIVE_AUDIT t15 rename writes={}", audit_summary(&rename_writes));
+    println!(
+        "LIVE_AUDIT t15 rename writes={}",
+        audit_summary(&rename_writes)
+    );
     assert_no_history_writes(&rename_writes, "automation rename")?;
     assert_exact_writes(
         &rename_writes,
@@ -3173,7 +3214,11 @@ fn t15_incremental_sql_audit(root: &Path) -> Result<(), String> {
     let edit_writes = audit_since(&path, marker)?;
     println!("LIVE_AUDIT t15 edit writes={}", audit_summary(&edit_writes));
     assert_no_history_writes(&edit_writes, "scoped task edit")?;
-    assert_exact_writes(&edit_writes, &[("tasks", "UPDATE", task)], "scoped task edit")?;
+    assert_exact_writes(
+        &edit_writes,
+        &[("tasks", "UPDATE", task)],
+        "scoped task edit",
+    )?;
 
     let marker = audit_marker(&path)?;
     cx.update_window(handle, |_, w, cx| {
@@ -3187,7 +3232,12 @@ fn t15_incremental_sql_audit(root: &Path) -> Result<(), String> {
     assert_exact_writes(&undo_writes, &[("tasks", "UPDATE", task)], "scoped Undo")?;
     let after = cx.update(|cx| {
         let task = app.read(cx).store.task(task).unwrap();
-        (task.title.clone(), task.stage, task.labels.clone(), task.approved_plan.clone())
+        (
+            task.title.clone(),
+            task.stage,
+            task.labels.clone(),
+            task.approved_plan.clone(),
+        )
     });
     if after != original {
         return Err(format!(
@@ -3198,11 +3248,7 @@ fn t15_incremental_sql_audit(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn measure_editor_save(
-    root: &Path,
-    label: &str,
-    history: usize,
-) -> Result<(u128, u128), String> {
+fn measure_editor_save(root: &Path, label: &str, history: usize) -> Result<(u128, u128), String> {
     let dir = root.join(label);
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     let mut store = Store::empty();
@@ -3244,11 +3290,7 @@ fn measure_editor_save(
     }
     let total = started.elapsed().as_micros();
     let disk = read_v4_store(&dir, &path)?;
-    if disk
-        .task(task)
-        .map(|task| task.title.as_str())
-        != Some("Perf edit")
-    {
+    if disk.task(task).map(|task| task.title.as_str()) != Some("Perf edit") {
         return Err(format!("{label}: editor save was not durable"));
     }
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
@@ -3299,54 +3341,78 @@ fn window_reopen(_root: &Path) -> Result<(), String> {
     // NSApplication termination exits the process, so this native case cannot
     // share the sequential suite's process with the remaining headless cases.
     if std::env::var_os(SEQUENTIAL_ENV).is_some() {
-        let status = std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
-            .arg("--qa-live-persistence")
-            .env(CASE_ENV, "window-reopen")
-            .env_remove(SEQUENTIAL_ENV)
-            .status()
-            .map_err(|e| e.to_string())?;
-        return if status.success() { Ok(()) } else { Err(format!("native window QA failed: {status}")) };
+        let status =
+            std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
+                .arg("--qa-live-persistence")
+                .env(CASE_ENV, "window-reopen")
+                .env_remove(SEQUENTIAL_ENV)
+                .status()
+                .map_err(|e| e.to_string())?;
+        return if status.success() {
+            Ok(())
+        } else {
+            Err(format!("native window QA failed: {status}"))
+        };
     }
-    application().with_assets(crate::ui_assets::AppAssets).run(|cx| {
-        init(cx);
-        let (handle, app) = open_window(WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                None, size(px(1000.), px(680.)), cx,
-            ))),
-            titlebar: Some(TitlebarOptions {
-                title: Some("Window reopen QA — isolated fixture".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }, cx, |w, cx| cx.new(|cx| TaskApp::new_mock(w, cx))).unwrap();
-        cx.spawn(async move |cx| {
-            for deferred in [false, true, false] {
-                cx.background_executor().timer(Duration::from_millis(150)).await;
-                cx.update_window(handle.into(), |_, w, cx| {
-                    app.update(cx, |a, cx| {
-                        assert!(a.can_close_window(cx));
-                        if deferred {
-                            a.window_close_ready = true;
-                            cx.notify();
+    application()
+        .with_assets(crate::ui_assets::AppAssets)
+        .run(|cx| {
+            init(cx);
+            let (handle, app) = open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                        None,
+                        size(px(1000.), px(680.)),
+                        cx,
+                    ))),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("Window reopen QA — isolated fixture".into()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                cx,
+                |w, cx| cx.new(|cx| TaskApp::new_mock(w, cx)),
+            )
+            .unwrap();
+            cx.spawn(async move |cx| {
+                for deferred in [false, true, false] {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(150))
+                        .await;
+                    cx.update_window(handle.into(), |_, w, cx| {
+                        app.update(cx, |a, cx| {
+                            assert!(a.can_close_window(cx));
+                            if deferred {
+                                a.window_close_ready = true;
+                                cx.notify();
+                            }
+                        });
+                        if !deferred {
+                            crate::close_workspace_window(w, cx);
                         }
+                    })
+                    .expect("close must retain the window");
+                    cx.background_executor()
+                        .timer(Duration::from_millis(150))
+                        .await;
+                    cx.update(|cx| {
+                        crate::reopen_application(cx);
+                        assert_eq!(cx.windows().len(), 1, "reopen must not duplicate windows");
                     });
-                    if !deferred {
-                        crate::close_workspace_window(w, cx);
-                    }
-                }).expect("close must retain the window");
-                cx.background_executor().timer(Duration::from_millis(150)).await;
-                cx.update(|cx| {
-                    crate::reopen_application(cx);
-                    assert_eq!(cx.windows().len(), 1, "reopen must not duplicate windows");
-                });
-                cx.update_window(handle.into(), |_, _, cx| {
-                    assert!(!app.read(cx).window_close_ready, "deferred close must finish");
-                }).expect("reopen must retain the original workspace");
-            }
-            println!("WINDOW_REOPEN_QA native close/reopen cycles passed");
-            cx.update(|cx| cx.quit());
-        }).detach();
-    });
+                    cx.update_window(handle.into(), |_, _, cx| {
+                        assert!(
+                            !app.read(cx).window_close_ready,
+                            "deferred close must finish"
+                        );
+                    })
+                    .expect("reopen must retain the original workspace");
+                }
+                println!("WINDOW_REOPEN_QA native close/reopen cycles passed");
+                cx.update(|cx| cx.quit());
+            })
+            .detach();
+        });
     Ok(())
 }
 
@@ -3386,9 +3452,11 @@ fn pending_quit_drain(root: &Path) -> Result<(), String> {
             clean = true;
             break;
         }
-        let _ = cx.update(|cx| app.update(cx, |a, cx| {
-            a.poll_runtime(cx);
-        }));
+        let _ = cx.update(|cx| {
+            app.update(cx, |a, cx| {
+                a.poll_runtime(cx);
+            })
+        });
         std::thread::sleep(Duration::from_millis(5));
     }
     if !clean {
@@ -3405,11 +3473,8 @@ fn pending_quit_drain(root: &Path) -> Result<(), String> {
 fn measure_history(root: &Path, label: &str, count: usize) -> Result<u128, String> {
     let dir = root.join(label);
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    let template = crate::automation_execution::build_template(
-        "Check history",
-        "One answer",
-    )
-    .map_err(|error| error.to_string())?;
+    let template = crate::automation_execution::build_template("Check history", "One answer")
+        .map_err(|error| error.to_string())?;
     let mut temp = Store::empty();
     let automation = temp
         .create_automation_draft(
@@ -3481,24 +3546,21 @@ fn measure_history(root: &Path, label: &str, count: usize) -> Result<u128, Strin
         .first()
         .map(|project| PathBuf::from(&project.directory))
         .unwrap_or_else(|| dir.clone());
-    let incarnation = crate::sqlite_v4::read_incarnation(&path)
-        .map_err(|error| error.to_string())?;
-    let mut reader = crate::history_reader::HistoryReader::start(
-        &path,
-        &root_path,
-        incarnation,
-    )?;
+    let incarnation =
+        crate::sqlite_v4::read_incarnation(&path).map_err(|error| error.to_string())?;
+    let mut reader = crate::history_reader::HistoryReader::start(&path, &root_path, incarnation)?;
     let started = Instant::now();
     reader
         .request_page(1, automation, None, None, 20)
         .map_err(|error| error.to_string())?;
     let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
-        if reader
-            .poll(8)
-            .iter()
-            .any(|response| matches!(response, crate::history_reader::ReaderResponse::Page { request_id: 1, .. }))
-        {
+        if reader.poll(8).iter().any(|response| {
+            matches!(
+                response,
+                crate::history_reader::ReaderResponse::Page { request_id: 1, .. }
+            )
+        }) {
             return Ok(started.elapsed().as_micros());
         }
         std::thread::sleep(Duration::from_millis(2));
@@ -3536,7 +3598,9 @@ fn lazy_period_store(root: &Path) -> Result<(Store, u64, u64, Vec<u64>), String>
             temp_automation_now(),
         )
         .map_err(|error| error.to_string())?;
-    store.approve_and_enable(automation, Vec::new(), temp_automation_now()).map_err(|error| error.to_string())?;
+    store
+        .approve_and_enable(automation, Vec::new(), temp_automation_now())
+        .map_err(|error| error.to_string())?;
     let mut occurrence = store
         .request_manual_occurrence(automation, "lazy-period", temp_automation_now())
         .map_err(|error| error.to_string())?;
@@ -3548,7 +3612,9 @@ fn lazy_period_store(root: &Path) -> Result<(Store, u64, u64, Vec<u64>), String>
     let mut next_id = store.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
     let mut run_ids = Vec::new();
     for task in &steps {
-        store.set_stage(*task, Stage::Done).map_err(|error| error.to_string())?;
+        store
+            .set_stage(*task, Stage::Done)
+            .map_err(|error| error.to_string())?;
         let signature = store
             .research_signature(*task)
             .ok_or_else(|| format!("lazy fixture signature missing for task {task}"))?;
@@ -3622,7 +3688,11 @@ fn lazy_period_hydrates_on_open(root: &Path) -> Result<(), String> {
     let before = cx.update(|cx| {
         let a = app.read(cx);
         (
-            a.store.runs().iter().find(|run| run.id == final_run).is_some_and(|run| run.output.is_empty()),
+            a.store
+                .runs()
+                .iter()
+                .find(|run| run.id == final_run)
+                .is_some_and(|run| run.output.is_empty()),
             a.store.run_body_is_lazy(final_run),
             a.history_needs_pump(),
         )
@@ -3810,7 +3880,9 @@ fn lazy_latest_attempt_invalidates(root: &Path) -> Result<(), String> {
             input_signature: String::new(),
         };
         store.push_run(failed);
-        if store.research_result_body_pending(task).is_some() || store.research_result(task).is_some() {
+        if store.research_result_body_pending(task).is_some()
+            || store.research_result(task).is_some()
+        {
             return Err("latest failed attempt did not invalidate older lazy result".to_string());
         }
         Ok::<(), String>(())
@@ -3864,26 +3936,47 @@ fn lazy_research_queue(root: &Path, mode: &str) -> Result<(), String> {
         pump_until(&mut cx, handle, &app, "paused body reads", |a| {
             saved.iter().all(|(id, _)| !a.store.run_body_is_lazy(*id))
         })?;
-        cx.update(|cx| app.update(cx, |a, cx| {
-            assert!(matches!(a.todo_batch.as_ref().unwrap().state, crate::batch::BatchState::Paused(_)));
-            assert_eq!(a.store.runs().len(), saved.len(), "hydration must respect pause");
-            a.resume_todo_batch(cx);
-        }));
+        cx.update(|cx| {
+            app.update(cx, |a, cx| {
+                assert!(matches!(
+                    a.todo_batch.as_ref().unwrap().state,
+                    crate::batch::BatchState::Paused(_)
+                ));
+                assert_eq!(
+                    a.store.runs().len(),
+                    saved.len(),
+                    "hydration must respect pause"
+                );
+                a.resume_todo_batch(cx);
+            })
+        });
     }
     advance_until(&mut cx, &app, "lazy research admission", |a| {
-        a.qa_dispatch_fake.as_ref().is_some_and(|fake| !fake.starts.is_empty())
+        a.qa_dispatch_fake
+            .as_ref()
+            .is_some_and(|fake| !fake.starts.is_empty())
     })?;
     cx.update(|cx| {
         let a = app.read(cx);
         assert_eq!(a.qa_dispatch_fake.as_ref().unwrap().starts.len(), 1);
-        assert_eq!(a.store.runs().len(), saved.len() + 1, "completed steps must not rerun");
+        assert_eq!(
+            a.store.runs().len(),
+            saved.len() + 1,
+            "completed steps must not rerun"
+        );
         let run = a.store.runs().last().unwrap();
         assert_eq!(run.task_id, steps[2]);
         for (id, body) in &saved {
             assert!(!a.store.run_body_is_lazy(*id));
-            assert!(run.prompt.contains(body), "dependent prompt must include saved evidence");
+            assert!(
+                run.prompt.contains(body),
+                "dependent prompt must include saved evidence"
+            );
         }
-        assert_eq!(a.todo_batch.as_ref().unwrap().state, crate::batch::BatchState::Running);
+        assert_eq!(
+            a.todo_batch.as_ref().unwrap().state,
+            crate::batch::BatchState::Running
+        );
     });
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok(())
@@ -3894,7 +3987,8 @@ fn lazy_dependency_view(root: &Path) -> Result<(), String> {
     let mut store = Store::empty();
     store.set_default_model("fixture/model".into());
     store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
-    let goal = store.create_research_goal("Lazy dependency".into(), "Reuse saved evidence".into(), 1)?;
+    let goal =
+        store.create_research_goal("Lazy dependency".into(), "Reuse saved evidence".into(), 1)?;
     let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Find evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Use evidence","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#)?;
     let mut run = store.prepare_run(steps[0])?;
     run.status = "Succeeded".into();
@@ -3904,7 +3998,11 @@ fn lazy_dependency_view(root: &Path) -> Result<(), String> {
     store.set_stage(steps[0], Stage::Done)?;
     // A newer ordinary result supersedes the lazy prerequisite as the startup
     // hydration target, matching a workspace whose latest attempt has no body.
-    let other = store.create_research_goal("Newer attempt".into(), "Keep startup target off the prerequisite".into(), 1)?;
+    let other = store.create_research_goal(
+        "Newer attempt".into(),
+        "Keep startup target off the prerequisite".into(),
+        1,
+    )?;
     let other_steps = store.apply_research_plan(other, r#"{"tasks":[{"title":"Collect","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#)?;
     let mut newer = store.prepare_run(other_steps[0])?;
     newer.status = "Succeeded".into();
@@ -3912,9 +4010,13 @@ fn lazy_dependency_view(root: &Path) -> Result<(), String> {
     store.push_run(newer);
     let path = seed_store(root, &store)?;
     let (mut cx, handle, app) = open_live(root, &path)?;
-    pump_until(&mut cx, handle, &app, "startup before dependency view", |a| {
-        !a.live_has_pending_receipts() && startup_gate_clear(a)
-    })?;
+    pump_until(
+        &mut cx,
+        handle,
+        &app,
+        "startup before dependency view",
+        |a| !a.live_has_pending_receipts() && startup_gate_clear(a),
+    )?;
     cx.update(|cx| {
         let a = app.read(cx);
         assert!(a.store.run_body_is_lazy(run_id));
@@ -3923,7 +4025,8 @@ fn lazy_dependency_view(root: &Path) -> Result<(), String> {
     });
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.open_task(steps[1], w, cx));
-    }).map_err(|error| error.to_string())?;
+    })
+    .map_err(|error| error.to_string())?;
     cx.update(|cx| assert!(
         app.read(cx).history_needs_pump(),
         "opening a dependent step must keep the runtime pump alive while the prerequisite body loads"
@@ -3937,7 +4040,8 @@ fn lazy_dependency_view(root: &Path) -> Result<(), String> {
             w.find("step-run").disabled().is_none(),
             "retry must unlock after the prerequisite body loads"
         );
-    }).map_err(|error| error.to_string())?;
+    })
+    .map_err(|error| error.to_string())?;
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok(())
 }
@@ -3949,7 +4053,12 @@ fn archive_permanent_delete(root: &Path) -> Result<(), String> {
     store.set_default_model("fixture/model".into());
     store.project_mut(1).unwrap().directory = root.to_string_lossy().into_owned();
     let topic = store.create_topic(1, "Delete fixture topic")?;
-    let goal = store.create_research_goal_in_topic("Delete fixture".into(), "Scope".into(), 1, Some(topic))?;
+    let goal = store.create_research_goal_in_topic(
+        "Delete fixture".into(),
+        "Scope".into(),
+        1,
+        Some(topic),
+    )?;
     let steps = store.apply_research_plan(goal, r#"{"tasks":[{"title":"Collect","instructions":"Find evidence","kind":"collect","depends_on":[]},{"title":"Analyze","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#)?;
     let mut run = store.prepare_run(steps[0])?;
     run.status = "Succeeded".into();
@@ -3958,21 +4067,30 @@ fn archive_permanent_delete(root: &Path) -> Result<(), String> {
     store.push_run(run);
     store.set_stage(steps[0], Stage::Done)?;
     store.set_topic_archived(topic, true)?;
-    let other = store.create_task("Unrelated", 1, Stage::Planned, None)?;
+    let other = store.create_task("Unrelated", 1, Stage::InProgress, None)?;
     let path = seed_store(root, &store)?;
     let (mut cx, handle, app) = open_live(root, &path)?;
-    pump_until(&mut cx, handle, &app, "startup receipts before deletion", |a| {
-        !a.live_has_pending_receipts() && startup_gate_clear(a)
-    })?;
-    cx.update(|cx| app.update(cx, |a, cx| {
-        assert!(a.store.run_body_is_lazy(run_id));
-        let target = ArchiveTarget::Task(goal);
-        let reviewed = a.store.archive_deletion(target).unwrap();
-        a.confirm_delete_archived(target, reviewed, cx);
-        assert!(a.error.is_empty(), "{}", a.error);
-        assert!(a.store.task(goal).is_none(), "deletion must be accepted");
-        assert_ne!(a.toast, "Archived research permanently deleted", "wait for durable receipt");
-    }));
+    pump_until(
+        &mut cx,
+        handle,
+        &app,
+        "startup receipts before deletion",
+        |a| !a.live_has_pending_receipts() && startup_gate_clear(a),
+    )?;
+    cx.update(|cx| {
+        app.update(cx, |a, cx| {
+            assert!(a.store.run_body_is_lazy(run_id));
+            let target = ArchiveTarget::Task(goal);
+            let reviewed = a.store.archive_deletion(target).unwrap();
+            a.confirm_delete_archived(target, reviewed, cx);
+            assert!(a.error.is_empty(), "{}", a.error);
+            assert!(a.store.task(goal).is_none(), "deletion must be accepted");
+            assert_ne!(
+                a.toast, "Archived research permanently deleted",
+                "wait for durable receipt"
+            );
+        })
+    });
     advance_until(&mut cx, &app, "durable archived deletion", |a| {
         !a.live_has_pending_receipts() && a.toast == "Archived research permanently deleted"
     })?;
@@ -3981,9 +4099,15 @@ fn archive_permanent_delete(root: &Path) -> Result<(), String> {
     assert!(steps.iter().all(|id| disk.task(*id).is_none()));
     assert!(!disk.runs().iter().any(|run| run.id == run_id));
     assert!(disk.task(other).is_some());
-    assert!(disk.topic(topic).is_none(), "the emptied archived topic is removed with its last goal");
+    assert!(
+        disk.topic(topic).is_none(),
+        "the emptied archived topic is removed with its last goal"
+    );
     let database = crate::sqlite_v4::SqliteV4::open(&path, root, INCARNATION)?;
-    assert!(database.body(run_id)?.is_none(), "delete saved body, not just its index");
+    assert!(
+        database.body(run_id)?.is_none(),
+        "delete saved body, not just its index"
+    );
     cx.update(|cx| assert!(app.read(cx).undo.is_empty()));
     let _ = cx.update_window(handle, |_, w, _| w.remove_window());
     Ok(())

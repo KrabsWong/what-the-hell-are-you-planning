@@ -12,7 +12,9 @@ fn fixture() -> (Store, u64, u64, Vec<u64>) {
     store.project_mut(1).unwrap().directory = "/tmp".into();
     store.set_default_model("fixture/model".into());
     let topic = store.create_topic(1, "Archived topic").unwrap();
-    let goal = store.create_research_goal_in_topic("Goal".into(), "Scope".into(), 1, Some(topic)).unwrap();
+    let goal = store
+        .create_research_goal_in_topic("Goal".into(), "Scope".into(), 1, Some(topic))
+        .unwrap();
     let steps = store.apply_research_plan(goal, PLAN).unwrap();
     (store, topic, goal, steps)
 }
@@ -30,31 +32,52 @@ fn completed_run(store: &mut Store, task: u64) -> u64 {
 #[test]
 fn archived_topic_deletion_cascades_lazy_results_and_all_planning_attempts() {
     let (mut store, topic, goal, steps) = fixture();
-    let request = store.create_research_request(1, Some(topic), "Synthetic request").unwrap();
+    let request = store
+        .create_research_request(1, Some(topic), "Synthetic request")
+        .unwrap();
     store.request_mut(request).unwrap().goal_ids = vec![goal];
     let result = completed_run(&mut store, steps[0]);
     let mut planning_ids = Vec::new();
     for _ in 0..2 {
-        let mut planning = store.runs().iter().find(|run| run.id == result).unwrap().clone();
+        let mut planning = store
+            .runs()
+            .iter()
+            .find(|run| run.id == result)
+            .unwrap()
+            .clone();
         planning.id = store.allocate_run_id().unwrap();
         planning.task_id = 0;
         planning.research_kind = None;
-        planning.planning_owner = Some(PlanningOwner { request_id: request, revision: 1, automation_id: None });
+        planning.planning_owner = Some(PlanningOwner {
+            request_id: request,
+            revision: 1,
+            automation_id: None,
+        });
         planning_ids.push(planning.id);
         store.push_run(planning);
     }
     store.request_mut(request).unwrap().planning_run_id = planning_ids.last().copied();
     store.run_mut(result).unwrap().output.clear();
     store.mark_lazy_body(result);
-    let child = store.create_task("Manual child", 1, Stage::Planned, Some(goal)).unwrap();
-    let nested = store.create_task("Nested child", 1, Stage::Planned, Some(child)).unwrap();
+    let child = store
+        .create_task("Manual child", 1, Stage::InProgress, Some(goal))
+        .unwrap();
+    let nested = store
+        .create_task("Nested child", 1, Stage::InProgress, Some(child))
+        .unwrap();
     let copy = store.create_topic(1, "Surviving copy").unwrap();
     store.topic_mut(copy).unwrap().replanned_from = Some(topic);
     store.push_publication(Publication {
         path_prefix: String::new(),
-        id: "fixture-publication".into(), topic, fingerprint: "fixture".into(),
-        config: PublishingConfig::default(), title: "Old report".into(), markdown: "Deleted result".into(),
-        status: "Online".into(), commit: None, message: String::new(),
+        id: "fixture-publication".into(),
+        topic,
+        fingerprint: "fixture".into(),
+        config: PublishingConfig::default(),
+        title: "Old report".into(),
+        markdown: "Deleted result".into(),
+        status: "Online".into(),
+        commit: None,
+        message: String::new(),
     });
     store.set_topic_archived(topic, true).unwrap();
     let target = ArchiveTarget::Topic(topic);
@@ -75,15 +98,24 @@ fn archived_topic_deletion_cascades_lazy_results_and_all_planning_attempts() {
 #[test]
 fn archived_goal_deletion_prunes_shared_request_and_preserves_unrelated_research() {
     let (mut store, topic, goal, steps) = fixture();
-    let other = store.create_research_goal_in_topic("Other goal".into(), "Other scope".into(), 1, Some(topic)).unwrap();
+    let other = store
+        .create_research_goal_in_topic("Other goal".into(), "Other scope".into(), 1, Some(topic))
+        .unwrap();
     let other_steps = store.apply_research_plan(other, PLAN).unwrap();
     let other_run = completed_run(&mut store, other_steps[0]);
     completed_run(&mut store, steps[0]);
     store.task_mut(steps[0]).unwrap().parent_id = None;
-    let request = store.create_research_request(1, Some(topic), "Shared request").unwrap();
+    let request = store
+        .create_research_request(1, Some(topic), "Shared request")
+        .unwrap();
     store.request_mut(request).unwrap().goal_ids = vec![goal, other];
     let retained_task = store.task(other).unwrap().clone();
-    let retained_run = store.runs().iter().find(|run| run.id == other_run).unwrap().clone();
+    let retained_run = store
+        .runs()
+        .iter()
+        .find(|run| run.id == other_run)
+        .unwrap()
+        .clone();
     store.archive(goal).unwrap();
     let target = ArchiveTarget::Task(goal);
     let reviewed = store.archive_deletion(target).unwrap();
@@ -100,7 +132,9 @@ fn archived_goal_deletion_prunes_shared_request_and_preserves_unrelated_research
 #[test]
 fn deleting_last_goal_removes_emptied_archived_topic_and_its_planning_history() {
     let (mut store, topic, goal, steps) = fixture();
-    let request = store.create_research_request(1, Some(topic), "Synthetic request").unwrap();
+    let request = store
+        .create_research_request(1, Some(topic), "Synthetic request")
+        .unwrap();
     store.request_mut(request).unwrap().goal_ids = vec![goal];
     let result = completed_run(&mut store, steps[0]);
     let copy = store.create_topic(1, "Surviving copy").unwrap();
@@ -123,7 +157,9 @@ fn deleting_last_goal_removes_emptied_archived_topic_and_its_planning_history() 
 #[test]
 fn deleting_one_goal_keeps_archived_topic_with_surviving_goals() {
     let (mut store, topic, goal, _) = fixture();
-    let other = store.create_research_goal_in_topic("Other goal".into(), "Other scope".into(), 1, Some(topic)).unwrap();
+    let other = store
+        .create_research_goal_in_topic("Other goal".into(), "Other scope".into(), 1, Some(topic))
+        .unwrap();
     store.set_topic_archived(topic, true).unwrap();
     let target = ArchiveTarget::Task(goal);
     let reviewed = store.archive_deletion(target).unwrap();
@@ -152,7 +188,11 @@ fn archive_deletion_refuses_nonarchived_targets_and_individual_research_steps() 
     assert!(store.archive_deletion(ArchiveTarget::Topic(topic)).is_err());
     assert!(store.archive_deletion(ArchiveTarget::Task(goal)).is_err());
     store.archive(goal).unwrap();
-    assert!(store.archive_deletion(ArchiveTarget::Task(steps[0])).is_err());
+    assert!(
+        store
+            .archive_deletion(ArchiveTarget::Task(steps[0]))
+            .is_err()
+    );
 }
 
 #[test]
@@ -160,9 +200,18 @@ fn archive_deletion_refuses_active_and_recoverable_runs_without_mutation() {
     let (mut store, _, goal, steps) = fixture();
     let run = completed_run(&mut store, steps[0]);
     store.archive(goal).unwrap();
-    for status in ["Queued", "Running", "Cancelling", "Recovering", "Interrupted"] {
+    for status in [
+        "Queued",
+        "Running",
+        "Cancelling",
+        "Recovering",
+        "Interrupted",
+    ] {
         store.run_mut(run).unwrap().status = status.into();
-        assert!(store.archive_deletion(ArchiveTarget::Task(goal)).is_err(), "{status}");
+        assert!(
+            store.archive_deletion(ArchiveTarget::Task(goal)).is_err(),
+            "{status}"
+        );
         assert!(store.task(goal).is_some());
         assert_eq!(store.runs().len(), 1);
     }
@@ -186,9 +235,18 @@ fn archive_deletion_refuses_automation_owned_targets_and_descendants() {
 #[test]
 fn archive_deletion_refuses_surviving_research_dependencies() {
     let (mut store, topic, goal, steps) = fixture();
-    let other = store.create_research_goal("Other goal".into(), "Scope".into(), 1).unwrap();
+    let other = store
+        .create_research_goal("Other goal".into(), "Scope".into(), 1)
+        .unwrap();
     let other_steps = store.apply_research_plan(other, PLAN).unwrap();
-    store.task_mut(other_steps[0]).unwrap().research.as_mut().unwrap().depends_on.push(steps[0]);
+    store
+        .task_mut(other_steps[0])
+        .unwrap()
+        .research
+        .as_mut()
+        .unwrap()
+        .depends_on
+        .push(steps[0]);
     store.set_topic_archived(topic, true).unwrap();
     assert!(store.archive_deletion(ArchiveTarget::Task(goal)).is_err());
     assert!(store.archive_deletion(ArchiveTarget::Topic(topic)).is_err());
@@ -202,7 +260,9 @@ fn archive_deletion_rechecks_reviewed_scope_and_archive_status() {
     store.archive(goal).unwrap();
     let target = ArchiveTarget::Task(goal);
     let reviewed = store.archive_deletion(target).unwrap();
-    let child = store.create_root_task_without_topic("Added after review", 1, Stage::Planned).unwrap();
+    let child = store
+        .create_root_task_without_topic("Added after review", 1, Stage::InProgress)
+        .unwrap();
     store.task_mut(child).unwrap().parent_id = Some(goal);
     assert!(store.delete_archived(target, &reviewed).is_err());
     assert!(store.task(goal).is_some());

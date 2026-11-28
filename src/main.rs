@@ -1,69 +1,59 @@
 #![recursion_limit = "256"]
-mod startup;
-mod time_display;
-#[cfg(feature = "qa")]
-mod render_qa;
 #[cfg(feature = "qa")]
 mod affordance_qa;
 mod app;
-#[cfg(target_os = "macos")]
-mod native_glass;
+mod appearance;
+mod archive_app;
+mod archive_delete;
+#[cfg(test)]
+mod archive_delete_tests;
+mod archive_presentation;
+#[cfg(feature = "qa")]
+mod archive_qa;
+mod attachments;
 mod automation;
 mod automation_activity;
 mod automation_execution;
 mod automation_planning_state;
 mod automation_policy;
+#[cfg(feature = "qa")]
+mod automation_qa;
 mod automation_runtime;
 mod automation_schedule;
 mod automation_views;
-mod archive_presentation;
-#[cfg(feature = "qa")]
-mod archive_qa;
-mod archive_app;
-mod archive_delete;
-#[cfg(test)]
-mod archive_delete_tests;
-mod appearance;
-mod attachments;
 mod batch;
 mod batch_app;
 #[cfg(feature = "qa")]
-mod automation_qa;
+mod batch_qa;
+mod brand;
+mod codex;
+mod command_app;
 #[cfg(feature = "qa")]
 mod command_qa;
 #[cfg(feature = "qa")]
-mod task_edit_qa;
-#[cfg(feature = "qa")]
-mod batch_qa;
-#[cfg(feature = "qa")]
 mod concurrency_qa;
-#[cfg(feature = "qa")]
-mod execution_eligibility_qa;
 mod controls;
-mod domain;
+mod diagram_renderer;
+mod diagram_viewer;
 mod dispatch_admission;
-mod dispatch_intent;
 #[cfg(feature = "qa")]
 mod dispatch_admission_qa;
-mod domain_command;
-mod history_reader;
-mod live_save_app;
-mod scoped_domain;
-mod scoped_edit;
-mod task_edit_app;
-mod material_app;
-mod scoped_material;
-mod scoped_settings;
-mod material_verify;
-mod command_app;
-mod draft_exit;
+mod dispatch_intent;
 mod display_order;
-mod stop_intent;
+mod domain;
+mod domain_command;
+mod draft_exit;
 mod ego;
 mod ego_mcp;
-mod search;
-mod execution_status;
 mod execution_eligibility;
+#[cfg(feature = "qa")]
+mod execution_eligibility_qa;
+mod execution_status;
+mod global_search;
+#[cfg(feature = "qa")]
+mod global_search_qa;
+mod goal_steps;
+mod history_reader;
 mod i18n;
 mod i18n_catalog;
 mod i18n_catalog_audit_automation;
@@ -73,105 +63,114 @@ mod i18n_catalog_automation;
 mod i18n_catalog_core;
 mod i18n_catalog_domain;
 mod i18n_catalog_export;
-mod global_search;
-#[cfg(feature = "qa")]
-mod global_search_qa;
-mod goal_steps;
 #[cfg(feature = "qa")]
 mod intake_qa;
 mod intake_views;
 #[cfg(feature = "qa")]
+mod live_performance_qa;
+#[cfg(feature = "qa")]
+mod live_persistence_qa;
+mod live_save_app;
+mod material_app;
+#[cfg(feature = "qa")]
 mod material_qa;
+mod material_verify;
+mod model_profiles;
+#[cfg(target_os = "macos")]
+mod native_glass;
 mod navigation;
 mod navigation_context;
 mod navigation_context_app;
-mod navigation_route;
 #[cfg(feature = "qa")]
 mod navigation_context_qa;
 #[cfg(feature = "qa")]
 mod navigation_qa;
+mod navigation_route;
 mod notification;
-mod updater;
 mod opencode;
-mod codex;
 mod persistence;
 mod persistence_journal;
 mod persistence_live;
 mod persistence_metrics;
-mod persistence_worker;
-#[cfg(feature = "qa")]
-mod live_performance_qa;
-#[cfg(feature = "qa")]
-mod live_persistence_qa;
-#[cfg(feature = "qa")]
-mod set_read_qa;
 #[cfg(feature = "qa")]
 mod persistence_qa;
+mod persistence_worker;
 mod project_app;
 mod project_planning;
 #[cfg(feature = "qa")]
 mod project_qa;
 mod project_views;
 #[cfg(feature = "qa")]
+mod publishing_qa;
+#[cfg(feature = "qa")]
 mod qa;
 mod recovery;
 #[cfg(feature = "qa")]
 mod recovery_qa;
+#[cfg(feature = "qa")]
+mod render_qa;
+mod report_git;
+mod report_html;
+mod report_publish;
 mod request_planning;
 mod research;
-mod result_presentation;
 mod research_app;
-mod research_export;
 mod research_input;
 mod research_input_app;
-mod research_input_views;
 #[cfg(feature = "qa")]
 mod research_input_qa;
-#[cfg(feature = "qa")]
-mod t19_qa;
-mod report_html;
-mod report_git;
-mod report_publish;
-#[cfg(feature = "qa")]
-mod publishing_qa;
+mod research_input_views;
 #[cfg(feature = "qa")]
 mod research_qa;
 mod research_views;
+mod result_presentation;
 #[cfg(feature = "qa")]
 mod result_presentation_qa;
-mod rich_markdown;
-mod diagram_renderer;
-mod diagram_viewer;
-mod run_views;
-mod run_errors;
-mod scheduler;
 mod retries;
 #[cfg(feature = "qa")]
 mod retry_qa;
+mod rich_markdown;
+mod run_errors;
+mod run_views;
+mod scheduler;
+mod scoped_domain;
+mod scoped_edit;
+mod scoped_material;
+mod scoped_settings;
+mod search;
 #[cfg(feature = "qa")]
-mod topic_queue_qa;
+mod set_read_qa;
 #[cfg(feature = "qa")]
 mod settings_qa;
-mod shell_surfaces;
 mod settings_views;
-mod model_profiles;
+mod shell_surfaces;
 #[cfg(feature = "qa")]
 mod simplify_qa;
-#[cfg(feature = "qa")]
-mod t11_qa;
 mod sqlite_storage;
 mod sqlite_v4;
+mod startup;
+mod stop_intent;
+#[cfg(feature = "qa")]
+mod t11_qa;
+#[cfg(feature = "qa")]
+mod t19_qa;
+mod task_edit_app;
+#[cfg(feature = "qa")]
+mod task_edit_qa;
+mod time_display;
 #[cfg(feature = "qa")]
 mod topic_qa;
+#[cfg(feature = "qa")]
+mod topic_queue_qa;
 mod topic_views;
 mod ui_assets;
-mod brand;
+mod updater;
 mod views;
-mod workspace;
 mod workflow;
-mod workflow_views;
 #[cfg(feature = "qa")]
 mod workflow_qa;
+mod workflow_views;
+mod workspace;
 #[cfg(feature = "qa")]
 mod workspace_qa;
 
@@ -230,40 +229,87 @@ fn supported_macos_launch_argument(args: &[String], index: &mut usize) -> bool {
 
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--ego-browser-mcp") {
-        let result = std::env::args().nth(2).ok_or_else(|| "Missing ego-browser path".to_string())
+        let result = std::env::args()
+            .nth(2)
+            .ok_or_else(|| "Missing ego-browser path".to_string())
             .and_then(|path| ego_mcp::serve(std::path::Path::new(&path)));
-        if let Err(error) = result { eprintln!("{error}"); std::process::exit(1); }
+        if let Err(error) = result {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
         return;
     }
     #[cfg(feature = "qa")]
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-display-order") { workflow_qa::display_order(); return; }
+    if std::env::args().any(|arg| arg == "--qa-display-order") {
+        workflow_qa::display_order();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-list-scroll") { workflow_qa::list_scroll(); return; }
+    if std::env::args().any(|arg| arg == "--qa-list-scroll") {
+        workflow_qa::list_scroll();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-workflow") { workflow_qa::run(); return; }
+    if std::env::args().any(|arg| arg == "--qa-workflow") {
+        workflow_qa::run();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-diagram-viewer") { diagram_viewer::verify(); return; }
+    if std::env::args().any(|arg| arg == "--qa-diagram-viewer") {
+        diagram_viewer::verify();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-rich-markdown") { rich_markdown::verify_frames(); return; }
+    if std::env::args().any(|arg| arg == "--qa-rich-markdown") {
+        rich_markdown::verify_frames();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-brand") { brand::verify_frames(); return; }
+    if std::env::args().any(|arg| arg == "--qa-brand") {
+        brand::verify_frames();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-attachments") { research_qa::attachments_only(); return; }
+    if std::env::args().any(|arg| arg == "--qa-attachments") {
+        research_qa::attachments_only();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-topic-queue") { topic_queue_qa::run(); return; }
+    if std::env::args().any(|arg| arg == "--qa-topic-queue") {
+        topic_queue_qa::run();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-retries") { retry_qa::run(); return; }
+    if std::env::args().any(|arg| arg == "--qa-retries") {
+        retry_qa::run();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-automation-dialog-first-scroll") { t19_qa::automation_dialog_first_scroll(); return; }
+    if std::env::args().any(|arg| arg == "--qa-automation-dialog-first-scroll") {
+        t19_qa::automation_dialog_first_scroll();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-automation-dialog-native") { t19_qa::automation_dialog_native(); return; }
+    if std::env::args().any(|arg| arg == "--qa-automation-dialog-native") {
+        t19_qa::automation_dialog_native();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-automation-dialog-scroll") { t19_qa::automation_dialog_scroll(); return; }
+    if std::env::args().any(|arg| arg == "--qa-automation-dialog-scroll") {
+        t19_qa::automation_dialog_scroll();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-scroll-native") { render_qa::scroll_native(); return; }
+    if std::env::args().any(|arg| arg == "--qa-scroll-native") {
+        render_qa::scroll_native();
+        return;
+    }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-render-perf") { render_qa::run(); return; }
+    if std::env::args().any(|arg| arg == "--qa-render-perf") {
+        render_qa::run();
+        return;
+    }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-result-layout") {
         simplify_qa::result_layout();
@@ -295,7 +341,10 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-recovery-scroll") { recovery_qa::scroll(); return; }
+    if std::env::args().any(|arg| arg == "--qa-recovery-scroll") {
+        recovery_qa::scroll();
+        return;
+    }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-recovery") {
         recovery_qa::run();
@@ -318,7 +367,8 @@ fn main() {
     }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-topic-migration") {
-        topic_qa::run_migration(); return;
+        topic_qa::run_migration();
+        return;
     }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-topic-actions") {
@@ -416,7 +466,10 @@ fn main() {
         return;
     }
     #[cfg(feature = "qa")]
-    if std::env::args().any(|arg| arg == "--qa-publishing") { publishing_qa::run(); return; }
+    if std::env::args().any(|arg| arg == "--qa-publishing") {
+        publishing_qa::run();
+        return;
+    }
     #[cfg(feature = "qa")]
     if std::env::args().any(|arg| arg == "--qa-settings") {
         settings_qa::run();
@@ -525,40 +578,45 @@ fn main() {
         );
         let bounds = Bounds::centered(None, size(px(1440.), px(920.)), cx);
         let mut app_entity = None;
-        let handle = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                window_min_size: Some(size(px(1000.), px(680.))),
-                titlebar: Some(TitlebarOptions {
-                    title: Some(crate::i18n::tr_string("What the hell are you planning?").into()),
-                    appears_transparent: cfg!(target_os = "macos"),
-                    traffic_light_position: cfg!(target_os = "macos")
-                        .then(|| point(px(20.), px(16.))),
+        let handle = cx
+            .open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    window_min_size: Some(size(px(1000.), px(680.))),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some(
+                            crate::i18n::tr_string("What the hell are you planning?").into(),
+                        ),
+                        appears_transparent: cfg!(target_os = "macos"),
+                        traffic_light_position: cfg!(target_os = "macos")
+                            .then(|| point(px(20.), px(16.))),
+                        ..Default::default()
+                    }),
+                    app_owns_titlebar_drag: cfg!(target_os = "macos"),
                     ..Default::default()
-                }),
-                app_owns_titlebar_drag: cfg!(target_os = "macos"),
-                ..Default::default()
-            },
-            |window, cx| {
-                let view = cx.new(|cx| {
-                    let mut app = app::TaskApp::new(window, cx);
-                    #[cfg(target_os = "macos")]
-                    {
-                        app.native_glass = native_glass::NativeGlass::install(window);
-                        if let Some(glass) = &app.native_glass { glass.refresh(app.store.liquid_glass(), window, cx); }
-                    }
-                    app
-                });
-                app_entity = Some(view.clone());
-                cx.new(|cx| {
-                    let root = base::Root::new(view, window, cx);
-                    #[cfg(target_os = "macos")]
-                    let root = root.bg(transparent_black());
-                    root
-                })
-            },
-        )
-        .expect("Could not open the application window");
+                },
+                |window, cx| {
+                    let view = cx.new(|cx| {
+                        let mut app = app::TaskApp::new(window, cx);
+                        #[cfg(target_os = "macos")]
+                        {
+                            app.native_glass = native_glass::NativeGlass::install(window);
+                            if let Some(glass) = &app.native_glass {
+                                glass.refresh(app.store.liquid_glass(), window, cx);
+                            }
+                        }
+                        app
+                    });
+                    app_entity = Some(view.clone());
+                    cx.new(|cx| {
+                        let root = base::Root::new(view, window, cx);
+                        #[cfg(target_os = "macos")]
+                        let root = root.bg(transparent_black());
+                        root
+                    })
+                },
+            )
+            .expect("Could not open the application window");
         let (quit_tx, quit_rx) = std::sync::mpsc::channel::<bool>();
         let app_entity = app_entity.expect("application view initialized");
         *retained_app.borrow_mut() = Some(app_entity.clone());
@@ -568,25 +626,33 @@ fn main() {
             let window: AnyWindowHandle = handle.into();
             cx.spawn(async move |cx| {
                 loop {
-                    cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
-                    if cx.update_window(window, |_, w, cx| {
-                        app.update(cx, |app, cx| {
-                            if let Some(version) = crate::updater::try_recv() {
-                                app.update_available = version;
-                                cx.notify();
-                            }
-                            if app.native_glass.as_ref().is_some_and(|glass| glass.refresh(app.store.liquid_glass(), w, cx)) {
-                                cx.notify();
-                            }
-                        });
-                    }).is_err() { break; }
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(500))
+                        .await;
+                    if cx
+                        .update_window(window, |_, w, cx| {
+                            app.update(cx, |app, cx| {
+                                if let Some(version) = crate::updater::try_recv() {
+                                    app.update_available = version;
+                                    cx.notify();
+                                }
+                                if app.native_glass.as_ref().is_some_and(|glass| {
+                                    glass.refresh(app.store.liquid_glass(), w, cx)
+                                }) {
+                                    cx.notify();
+                                }
+                            });
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
-            }).detach();
+            })
+            .detach();
         }
         cx.on_action(move |_: &Quit, cx| {
-            let _ = app_entity.update(cx, |app, cx| {
-                app.begin_graceful_quit(quit_tx.clone(), cx)
-            });
+            let _ = app_entity.update(cx, |app, cx| app.begin_graceful_quit(quit_tx.clone(), cx));
         });
         // Poll the completion channel on the foreground executor so the quit
         // request never blocks the UI thread. The app quits only after the
@@ -665,7 +731,15 @@ mod argument_guard_tests {
 
     #[test]
     fn rejects_malformed_process_serial_numbers() {
-        for case in ["-psn_", "-psn_abc", "-psn_0", "-psn_0_", "-psn__1", "-psn_0_1_2", "-psn_0_x"] {
+        for case in [
+            "-psn_",
+            "-psn_abc",
+            "-psn_0",
+            "-psn_0_",
+            "-psn__1",
+            "-psn_0_1_2",
+            "-psn_0_x",
+        ] {
             assert_eq!(
                 unsupported_argument(&args(&[case])),
                 Some(case.to_string()),
@@ -689,7 +763,10 @@ mod argument_guard_tests {
             Some("-NSDocumentRevisionsDebugMode".into())
         );
         assert_eq!(
-            unsupported_argument(&args(&["-NSDocumentRevisionsDebugMode", "--qa-live-persistence"])),
+            unsupported_argument(&args(&[
+                "-NSDocumentRevisionsDebugMode",
+                "--qa-live-persistence"
+            ])),
             Some("-NSDocumentRevisionsDebugMode".into())
         );
     }

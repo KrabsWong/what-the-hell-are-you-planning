@@ -18,11 +18,7 @@ use crate::{
     research::{ResearchKind, ResearchTask},
 };
 use gpui_kit::{test::TestWindowExt, *};
-use std::{
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::Path, sync::Arc, time::Duration};
 
 const PLAN: &str = r#"{"tasks":[{"title":"Collect original announcements","instructions":"Save sources.","kind":"collect","depends_on":[]},{"title":"Analyze the evidence","instructions":"Compare the evidence.","kind":"analyze","depends_on":[0]},{"title":"Write the final report","instructions":"Write a cited report.","kind":"advise","depends_on":[1]}]}"#;
 
@@ -146,7 +142,10 @@ fn automation_definition(store: &mut Store, _directory: &Path) -> u64 {
         objective: "Track the public fuel price each period.".into(),
         expected_result: "A short cited answer with the as-of time.".into(),
         schedule: Schedule {
-            spec: ScheduleSpec::Daily { hour: 9, minute: 15 },
+            spec: ScheduleSpec::Daily {
+                hour: 9,
+                minute: 15,
+            },
             timezone: "UTC".into(),
         },
         status: DefinitionStatus::Enabled,
@@ -177,7 +176,12 @@ fn automation_period(store: &mut Store, automation: u64) -> (u64, u64) {
         .unwrap();
     store.task_mut(goal).unwrap().automation_id = Some(automation);
     let task = store
-        .create_task("Answer the recurring fuel question", 1, Stage::Planned, Some(goal))
+        .create_task(
+            "Answer the recurring fuel question",
+            1,
+            Stage::InProgress,
+            Some(goal),
+        )
         .unwrap();
     let task_ref = store.task_mut(task).unwrap();
     task_ref.automation_id = Some(automation);
@@ -289,12 +293,7 @@ fn focus_search_input(w: &mut Window, cx: &mut App) {
     assert_eq!(w.find("global-search-input").focused(), Some(true));
 }
 
-fn screenshot(
-    cx: &mut HeadlessAppContext,
-    handle: AnyWindowHandle,
-    directory: &Path,
-    name: &str,
-) {
+fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &Path, name: &str) {
     for _ in 0..4 {
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| w.render_frame(cx))
@@ -340,15 +339,13 @@ fn research_list_origin(
     })
     .unwrap();
     cx.run_until_parked();
-    screenshot(
-        &mut cx,
-        handle,
-        directory,
-        &format!("list-{label}.png"),
-    );
+    screenshot(&mut cx, handle, directory, &format!("list-{label}.png"));
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        let expected = format!("Research · {}", fixture.store.task(fixture.goal).unwrap().title);
+        let expected = format!(
+            "Research · {}",
+            fixture.store.task(fixture.goal).unwrap().title
+        );
         let found = w.try_find(format!("global-search-result-research-{}", fixture.goal));
         assert_eq!(
             found.as_ref().and_then(|row| row.label()),
@@ -357,9 +354,18 @@ fn research_list_origin(
         let row_id = format!("global-search-result-research-{}", fixture.goal);
         let bounds = w.find(row_id.clone()).bounds();
         let detail = w.find(format!("{row_id}-detail")).bounds();
-        assert!(bounds.size.height <= px(68.), "Search results must remain compact two-line rows");
-        assert!(detail.size.width >= px(200.), "Search metadata must use the available row width");
-        assert!(detail.size.height <= px(24.), "Search metadata must stay on one line");
+        assert!(
+            bounds.size.height <= px(68.),
+            "Search results must remain compact two-line rows"
+        );
+        assert!(
+            detail.size.width >= px(200.),
+            "Search metadata must use the available row width"
+        );
+        assert!(
+            detail.size.height <= px(24.),
+            "Search metadata must stay on one line"
+        );
         let before = app.read(cx).global_search_ui.selected;
         w.press("down", cx);
         w.render_frame(cx);
@@ -386,7 +392,8 @@ fn research_list_origin(
         assert_eq!(w.focused(cx), opener);
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 /// Table-driven Project/Topic caller coverage: both required non-All Research
@@ -429,10 +436,7 @@ fn research_scope_origin(
             assert_eq!(app.read(cx).scope(), scope);
             assert_eq!(app.read(cx).all_status, AllStatus::Open);
             assert_eq!(app.read(cx).query(), "supply");
-            assert_eq!(
-                app.read(cx).search.read(cx).value().to_string(),
-                "supply"
-            );
+            assert_eq!(app.read(cx).search.read(cx).value().to_string(), "supply");
             w.input("Semiconductor", cx);
         })
         .unwrap();
@@ -445,26 +449,22 @@ fn research_scope_origin(
         );
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
-            assert!(w
-                .try_find(format!(
-                    "global-search-result-research-{}",
-                    fixture.goal
-                ))
-                .is_some());
+            assert!(
+                w.try_find(format!("global-search-result-research-{}", fixture.goal))
+                    .is_some()
+            );
             w.press("escape", cx);
             w.render_frame(cx);
             assert!(!app.read(cx).global_search_ui.open);
             assert_eq!(app.read(cx).scope(), scope);
             assert_eq!(app.read(cx).all_status, AllStatus::Open);
             assert_eq!(app.read(cx).query(), "supply");
-            assert_eq!(
-                app.read(cx).search.read(cx).value().to_string(),
-                "supply"
-            );
+            assert_eq!(app.read(cx).search.read(cx).value().to_string(), "supply");
             assert_eq!(w.focused(cx), opener);
         })
         .unwrap();
-        cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+        cx.update_window(handle, |_, w, _| w.remove_window())
+            .unwrap();
     }
 }
 
@@ -478,8 +478,7 @@ fn research_detail_origin(
 ) {
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, w, cx| {
         a.open_task(fixture.goal, w, cx);
-        a.detail_scroll
-            .set_offset(point(px(0.), px(-48.)));
+        a.detail_scroll.set_offset(point(px(0.), px(-48.)));
         cx.notify();
     });
     cx.update_window(handle, |_, w, cx| {
@@ -525,9 +524,11 @@ fn research_detail_origin(
         assert!(!app.read(cx).global_search_ui.open);
         assert_eq!(app.read(cx).selected(), Some(fixture.step));
         let (crumbs, _) = app.read(cx).navigation_path();
-        assert!(crumbs
-            .iter()
-            .any(|(_, title, _)| title.as_str() == "Semiconductor desk"));
+        assert!(
+            crumbs
+                .iter()
+                .any(|(_, title, _)| title.as_str() == "Semiconductor desk")
+        );
         let topic_name = fixture
             .store
             .topics()
@@ -535,13 +536,16 @@ fn research_detail_origin(
             .find(|topic| topic.id == fixture.topic)
             .map(|topic| topic.display_name())
             .unwrap();
-        assert!(crumbs
-            .iter()
-            .any(|(_, title, _)| title.as_str() == topic_name.as_str()));
+        assert!(
+            crumbs
+                .iter()
+                .any(|(_, title, _)| title.as_str() == topic_name.as_str())
+        );
         assert_eq!(app.read(cx).detail_scroll.offset(), point(px(0.), px(0.)));
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn research_result_origin(
@@ -581,7 +585,8 @@ fn research_result_origin(
         directory,
         &format!("result-origin-{label}.png"),
     );
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn automation_list_origin(
@@ -623,20 +628,19 @@ fn automation_list_origin(
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert!(w
-            .try_find(format!(
+        assert!(
+            w.try_find(format!(
                 "global-search-result-automation-{}",
                 fixture.automation
             ))
-            .is_some());
+            .is_some()
+        );
         w.click("global-search-domain-automations", cx);
         w.render_frame(cx);
-        assert!(w
-            .try_find(format!(
-                "global-search-result-research-{}",
-                fixture.goal
-            ))
-            .is_none());
+        assert!(
+            w.try_find(format!("global-search-result-research-{}", fixture.goal))
+                .is_none()
+        );
         let expected = format!("Automation · Fuel price watch");
         assert_eq!(
             w.find(format!(
@@ -660,7 +664,10 @@ fn automation_list_origin(
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
         assert_eq!(app.read(cx).scope(), Scope::Automations);
-        assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
+        assert_eq!(
+            app.read(cx).automation_ui.selected,
+            Some(fixture.automation)
+        );
         let (crumbs, current) = app.read(cx).navigation_path();
         assert_eq!(current, "Fuel price watch");
         assert_eq!(
@@ -675,7 +682,8 @@ fn automation_list_origin(
         assert_eq!(app.read(cx).automation_ui.selected, None);
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn automation_results_origin(
@@ -718,10 +726,7 @@ fn automation_results_origin(
         w.render_frame(cx);
         // Pointer selection is the same command as Enter.
         w.click(
-            format!(
-                "global-search-result-automation-{}",
-                fixture.automation
-            ),
+            format!("global-search-result-automation-{}", fixture.automation),
             cx,
         );
     })
@@ -737,10 +742,14 @@ fn automation_results_origin(
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
         assert_eq!(app.read(cx).scope(), Scope::Automations);
-        assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
+        assert_eq!(
+            app.read(cx).automation_ui.selected,
+            Some(fixture.automation)
+        );
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn automation_modal_and_period(
@@ -795,7 +804,10 @@ fn automation_modal_and_period(
         assert!(!app.read(cx).global_search_ui.open);
         assert!(!app.read(cx).settings_overlay());
         assert_eq!(app.read(cx).scope(), Scope::Automations);
-        assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
+        assert_eq!(
+            app.read(cx).automation_ui.selected,
+            Some(fixture.automation)
+        );
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
         let (crumbs, current) = app.read(cx).navigation_path();
         assert_eq!(current, "Fuel price watch");
@@ -810,10 +822,14 @@ fn automation_modal_and_period(
         w.render_frame(cx);
         assert_eq!(app.read(cx).period_overlay(), None);
         assert_eq!(app.read(cx).scope(), Scope::Automations);
-        assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
+        assert_eq!(
+            app.read(cx).automation_ui.selected,
+            Some(fixture.automation)
+        );
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn settings_origin(
@@ -853,7 +869,8 @@ fn settings_origin(
         directory,
         &format!("settings-origin-{label}.png"),
     );
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn dirty_task_form(
@@ -911,12 +928,10 @@ fn dirty_task_form(
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert!(w
-            .try_find(format!(
-                "global-search-result-research-{}",
-                fixture.step
-            ))
-            .is_some());
+        assert!(
+            w.try_find(format!("global-search-result-research-{}", fixture.step))
+                .is_some()
+        );
         w.press("enter", cx);
     })
     .unwrap();
@@ -959,12 +974,16 @@ fn dirty_task_form(
     cx.update_window(handle, |_, w, cx| {
         w.click("dirty-exit-discard", cx);
         w.render_frame(cx);
-        assert!(!app.read(cx).global_search_ui.open, "Discard activates the target");
+        assert!(
+            !app.read(cx).global_search_ui.open,
+            "Discard activates the target"
+        );
         assert!(app.read(cx).draft.is_none());
         assert_eq!(app.read(cx).selected(), Some(fixture.step));
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn dirty_automation_form(
@@ -977,9 +996,9 @@ fn dirty_automation_form(
 ) {
     let (mut cx, handle, app) = with_app(&fixture.store, path, width, height, |a, w, cx| {
         a.start_automation_create(w, cx);
-        a.automation_ui
-            .name
-            .update(cx, |input, cx| input.set_value("My queued automation", w, cx));
+        a.automation_ui.name.update(cx, |input, cx| {
+            input.set_value("My queued automation", w, cx)
+        });
         cx.notify();
     });
     cx.update_window(handle, |_, w, cx| {
@@ -1009,12 +1028,7 @@ fn dirty_automation_form(
         assert!(app.read(cx).global_search_ui.open);
         assert!(app.read(cx).automation_ui.creating);
         assert_eq!(
-            app.read(cx)
-                .automation_ui
-                .name
-                .read(cx)
-                .value()
-                .to_string(),
+            app.read(cx).automation_ui.name.read(cx).value().to_string(),
             "My queued automation"
         );
         assert!(app.read(cx).navigation.pending_exit.is_some());
@@ -1036,7 +1050,8 @@ fn dirty_automation_form(
         assert!(!app.read(cx).automation_ui.creating);
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn clean_automation_form(
@@ -1076,11 +1091,15 @@ fn clean_automation_form(
         w.render_frame(cx);
         assert!(!app.read(cx).global_search_ui.open);
         assert!(!app.read(cx).automation_ui.creating);
-        assert_eq!(app.read(cx).automation_ui.selected, Some(fixture.automation));
+        assert_eq!(
+            app.read(cx).automation_ui.selected,
+            Some(fixture.automation)
+        );
         assert_eq!(app.read(cx).scope(), Scope::Automations);
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }
 
 fn empty_and_deleted_targets(
@@ -1105,7 +1124,10 @@ fn empty_and_deleted_targets(
     cx.run_until_parked();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert_eq!(w.find("global-search-empty-title").label(), Some("No matches"));
+        assert_eq!(
+            w.find("global-search-empty-title").label(),
+            Some("No matches")
+        );
         assert!(app.read(cx).global_search_ui.hits.is_empty());
         w.press("escape", cx);
         w.render_frame(cx);
@@ -1122,9 +1144,10 @@ fn empty_and_deleted_targets(
     let doomed = fixture.step;
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert!(w
-            .try_find(format!("global-search-result-research-{doomed}"))
-            .is_some());
+        assert!(
+            w.try_find(format!("global-search-result-research-{doomed}"))
+                .is_some()
+        );
         app.update(cx, |a, _| {
             a.store.retain_tasks(|task| task.id != doomed);
         });
@@ -1141,14 +1164,16 @@ fn empty_and_deleted_targets(
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(app.read(cx).global_search_ui.open);
-        assert!(app
-            .read(cx)
-            .global_search_ui
-            .message
-            .as_deref()
-            .is_some_and(|message| message.contains("no longer exists")));
+        assert!(
+            app.read(cx)
+                .global_search_ui
+                .message
+                .as_deref()
+                .is_some_and(|message| message.contains("no longer exists"))
+        );
         assert_eq!(app.read(cx).selected(), Some(fixture.goal));
     })
     .unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
 }

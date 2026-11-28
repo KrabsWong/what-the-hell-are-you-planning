@@ -170,9 +170,7 @@ impl TaskApp {
             automation_command: None,
         };
         match self.submit_live_snapshot(completion, cx) {
-            Ok(crate::live_save_app::SaveAcceptance::Pending) => {
-                Ok(CommandRun::Saving { subject })
-            }
+            Ok(crate::live_save_app::SaveAcceptance::Pending) => Ok(CommandRun::Saving { subject }),
             Ok(crate::live_save_app::SaveAcceptance::Durable) => {
                 Ok(CommandRun::Durable(CommandReceipt {
                     subject,
@@ -382,9 +380,8 @@ impl TaskApp {
                     self.automation_ui.feedback = Some(Err(error));
                 } else {
                     self.pending_dispatch = None;
-                    self.automation_ui.feedback = Some(Err(format!(
-                        "Stale pending dispatch discarded: {error}"
-                    )));
+                    self.automation_ui.feedback =
+                        Some(Err(format!("Stale pending dispatch discarded: {error}")));
                 }
             }
         }
@@ -465,9 +462,8 @@ impl TaskApp {
         let snapshot = self.store.run_mut(run_id).map(|run| {
             run.status = "Cancelled".into();
             run.ended_at = Some(crate::opencode::timestamp());
-            run.logs.push(
-                "[run] Cancelled before launch; no process was started.".into(),
-            );
+            run.logs
+                .push("[run] Cancelled before launch; no process was started.".into());
             run.clone()
         });
         if let Some(run) = snapshot
@@ -500,12 +496,13 @@ impl TaskApp {
         {
             return;
         }
-        self.dispatch_cancel_retire.push(crate::app::PendingCancelRetire {
-            operation_key: operation_key.clone(),
-            run_id,
-            phase: crate::app::CancelRetirePhase::Intent,
-            requested: false,
-        });
+        self.dispatch_cancel_retire
+            .push(crate::app::PendingCancelRetire {
+                operation_key: operation_key.clone(),
+                run_id,
+                phase: crate::app::CancelRetirePhase::Intent,
+                requested: false,
+            });
         self.advance_cancel_retirement(&operation_key, cx);
     }
 
@@ -536,15 +533,15 @@ impl TaskApp {
             {
                 pending.requested = false;
             }
-            self.dispatch_admission_error =
-                Some("Durable dispatch admission is unavailable; cancellation retirement is retained.".into());
+            self.dispatch_admission_error = Some(
+                "Durable dispatch admission is unavailable; cancellation retirement is retained."
+                    .into(),
+            );
             self.dispatch_parked = true;
             return;
         };
         let result = match phase {
-            crate::app::CancelRetirePhase::Intent => {
-                adapter.release_dispatch_intent(operation_key)
-            }
+            crate::app::CancelRetirePhase::Intent => adapter.release_dispatch_intent(operation_key),
             crate::app::CancelRetirePhase::Marker => adapter.release_cancel(operation_key),
         };
         if let Err(error) = result {
@@ -573,15 +570,12 @@ impl TaskApp {
         if let Some((reserved_intent, run, files)) = self.pending_dispatch_reserved.clone() {
             if reserved_intent != pending.intent {
                 self.pending_dispatch_reserved = None;
-                return Err(
-                    "The retained dispatch does not belong to this pending intent.".into(),
-                );
+                return Err("The retained dispatch does not belong to this pending intent.".into());
             }
             let prepared = match self.prepare_run_dispatch(run.clone(), files.clone(), cx) {
                 Some(prepared) => prepared,
                 None => {
-                    self.pending_dispatch_reserved =
-                        Some((reserved_intent, run, files));
+                    self.pending_dispatch_reserved = Some((reserved_intent, run, files));
                     return Err(self.error.clone());
                 }
             };
@@ -591,8 +585,7 @@ impl TaskApp {
                     return Ok(());
                 }
                 None => {
-                    self.pending_dispatch_reserved =
-                        Some((reserved_intent, run, files));
+                    self.pending_dispatch_reserved = Some((reserved_intent, run, files));
                     return Err(self.error.clone());
                 }
             }
@@ -617,7 +610,9 @@ impl TaskApp {
                     );
                 }
                 if occurrence.first_start_expired(now)
-                    || occurrence.deadline_at.is_some_and(|deadline| now >= deadline)
+                    || occurrence
+                        .deadline_at
+                        .is_some_and(|deadline| now >= deadline)
                 {
                     return Err("The automation period has expired and will not dispatch.".into());
                 }
@@ -709,8 +704,7 @@ impl TaskApp {
                 .get(index)
                 .and_then(|agent| agent.clone())
                 .unwrap_or_else(|| self.store.research_config().default_agent.clone());
-            run.prompt =
-                crate::automation_execution::with_time_context(run.prompt, occurrence);
+            run.prompt = crate::automation_execution::with_time_context(run.prompt, occurrence);
             run.logs.push(format!(
                 "[automation] Report regeneration for occurrence {} keeps its approved snapshot and time window",
                 occurrence.id
@@ -794,8 +788,7 @@ impl TaskApp {
     ) -> Option<RunDispatch> {
         if self.dispatch_awaiting.is_some() {
             if let Some(run) = Self::dispatched_run(&command) {
-                self.pending_dispatch_reserved =
-                    Some((intent.clone(), run.clone(), files.clone()));
+                self.pending_dispatch_reserved = Some((intent.clone(), run.clone(), files.clone()));
             }
             self.pending_dispatch = Some(PendingDispatch { intent, files });
             self.dispatch_waiting = Some(
@@ -806,12 +799,14 @@ impl TaskApp {
             return None;
         }
         let reserved_run = Self::dispatched_run(&command).cloned();
-        let prepared = match self.store.prepare_command(command.id(), command.class(), command) {
+        let prepared = match self
+            .store
+            .prepare_command(command.id(), command.class(), command)
+        {
             Ok(prepared) => prepared,
             Err(error) => {
                 if let Some(run) = reserved_run {
-                    self.pending_dispatch_reserved =
-                        Some((intent.clone(), run, files.clone()));
+                    self.pending_dispatch_reserved = Some((intent.clone(), run, files.clone()));
                 }
                 self.pending_dispatch = Some(PendingDispatch { intent, files });
                 self.error = command_error_text(error);
@@ -827,8 +822,7 @@ impl TaskApp {
         match adapter.admit(prepared) {
             Ok(id) => {
                 if let Some(run) = reserved_run {
-                    self.pending_dispatch_reserved =
-                        Some((intent.clone(), run, files.clone()));
+                    self.pending_dispatch_reserved = Some((intent.clone(), run, files.clone()));
                 }
                 self.dispatch_awaiting = Some(id);
                 self.dispatch_awaiting_files = Some(files);
@@ -917,11 +911,9 @@ impl TaskApp {
                             let binds = self.todo_batch.as_ref().is_some_and(|batch| {
                                 self.batch_generation_seq == pending.batch_generation
                                     && batch.contains_pending(pending.goal)
-                                    && self
-                                        .store
-                                        .runs()
-                                        .iter()
-                                        .any(|run| run.id == pending.run_id && run.task_id == pending.step)
+                                    && self.store.runs().iter().any(|run| {
+                                        run.id == pending.run_id && run.task_id == pending.step
+                                    })
                             });
                             if binds {
                                 if let Some(batch) = self.todo_batch.as_mut() {
@@ -935,21 +927,17 @@ impl TaskApp {
                         // A cancellation recorded before this receipt must retire
                         // the run now: apply it, mark it Cancelled and acknowledge,
                         // but never claim or spawn.
-                        let cancelled = self
-                            .dispatch_cancelled
-                            .get(&durable.id.run_id)
-                            .is_some_and(|cancelled_key| {
-                                cancelled_key == &durable.id.operation_key
-                            });
+                        let cancelled =
+                            self.dispatch_cancelled.get(&durable.id.run_id).is_some_and(
+                                |cancelled_key| cancelled_key == &durable.id.operation_key,
+                            );
                         if cancelled {
-                            let snapshot = if let Some(run) =
-                                self.store.run_mut(durable.id.run_id)
+                            let snapshot = if let Some(run) = self.store.run_mut(durable.id.run_id)
                             {
                                 run.status = "Cancelled".into();
                                 run.ended_at = Some(crate::opencode::timestamp());
                                 run.logs.push(
-                                    "[run] Cancelled before launch; no process was started."
-                                        .into(),
+                                    "[run] Cancelled before launch; no process was started.".into(),
                                 );
                                 Some(run.clone())
                             } else {
@@ -957,10 +945,8 @@ impl TaskApp {
                             };
                             if let Some(run) = snapshot
                                 && let Some(adapter) = self.dispatch_admission.as_mut()
-                                && let Err(error) = adapter.persist_resolution_status(
-                                    &durable.id.operation_key,
-                                    run,
-                                )
+                                && let Err(error) = adapter
+                                    .persist_resolution_status(&durable.id.operation_key, run)
                             {
                                 self.dispatch_admission_error = Some(format!(
                                     "The cancellation status could not be queued; it will retry: {error}"
@@ -999,7 +985,9 @@ impl TaskApp {
                     }
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::LaunchClaimPersisted { operation_key } => {
+                crate::dispatch_admission::AdmissionUpdate::LaunchClaimPersisted {
+                    operation_key,
+                } => {
                     if let Some((old_key, new_id)) = self.dispatch_resolution_new.clone()
                         && operation_key.ends_with(&format!(":run:{new_id}"))
                     {
@@ -1015,7 +1003,9 @@ impl TaskApp {
                     self.launch_claimed(&operation_key, cx);
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::LaunchClaimReleased { operation_key } => {
+                crate::dispatch_admission::AdmissionUpdate::LaunchClaimReleased {
+                    operation_key,
+                } => {
                     #[cfg(feature = "qa")]
                     Self::qa_crash_at("claim");
                     if let Some(mut retirement) = self.dispatch_status_durable.clone()
@@ -1045,7 +1035,9 @@ impl TaskApp {
                     self.execute_resolution(&operation_key, rerun, replacement, cx);
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::ResolutionReleased { operation_key } => {
+                crate::dispatch_admission::AdmissionUpdate::ResolutionReleased {
+                    operation_key,
+                } => {
                     if self
                         .dispatch_resolution_pending
                         .as_ref()
@@ -1068,7 +1060,10 @@ impl TaskApp {
                     }
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::ResolutionFailed { operation_key, reason } => {
+                crate::dispatch_admission::AdmissionUpdate::ResolutionFailed {
+                    operation_key,
+                    reason,
+                } => {
                     self.dispatch_admission_error = Some(format!(
                         "The resolution decision was not durable; nothing was changed: {reason}. Retry dispatch admission to resume this exact intent."
                     ));
@@ -1082,7 +1077,10 @@ impl TaskApp {
                     self.dispatch_parked = true;
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::LaunchClaimFailed { reason, operation_key } => {
+                crate::dispatch_admission::AdmissionUpdate::LaunchClaimFailed {
+                    reason,
+                    operation_key,
+                } => {
                     let matched = self
                         .dispatch_claim_pending
                         .as_ref()
@@ -1099,7 +1097,10 @@ impl TaskApp {
                     }
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::ResolutionStatusFailed { reason, .. } => {
+                crate::dispatch_admission::AdmissionUpdate::ResolutionStatusFailed {
+                    reason,
+                    ..
+                } => {
                     self.dispatch_admission_error = Some(format!(
                         "{reason}. Retry dispatch admission to resume the status write."
                     ));
@@ -1190,7 +1191,10 @@ impl TaskApp {
                     }
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::AckFailed { operation_key, reason } => {
+                crate::dispatch_admission::AdmissionUpdate::AckFailed {
+                    operation_key,
+                    reason,
+                } => {
                     if self.dispatch_cancel_retire.iter().any(|pending| {
                         pending.operation_key == operation_key
                             && pending.phase == crate::app::CancelRetirePhase::Intent
@@ -1229,7 +1233,10 @@ impl TaskApp {
                     self.dispatch_parked = true;
                     changed = true;
                 }
-                crate::dispatch_admission::AdmissionUpdate::LiveSaveDurable { generation, epoch } => {
+                crate::dispatch_admission::AdmissionUpdate::LiveSaveDurable {
+                    generation,
+                    epoch,
+                } => {
                     self.on_live_durable(generation, epoch, cx);
                     changed = true;
                 }
@@ -1271,8 +1278,7 @@ impl TaskApp {
                             run.status = "Cancelled".into();
                             run.ended_at = Some(crate::opencode::timestamp());
                             run.logs.push(
-                                "[run] Cancelled before launch; no process was started."
-                                    .into(),
+                                "[run] Cancelled before launch; no process was started.".into(),
                             );
                         }
                         run.clone()
@@ -1280,8 +1286,8 @@ impl TaskApp {
                     match snapshot {
                         Some(run) => {
                             if let Some(adapter) = self.dispatch_admission.as_mut()
-                                && let Err(error) = adapter
-                                    .persist_resolution_status(&operation_key, run)
+                                && let Err(error) =
+                                    adapter.persist_resolution_status(&operation_key, run)
                             {
                                 self.dispatch_admission_error = Some(format!(
                                     "The restored cancellation status could not be queued; it will retry: {error}"
@@ -1292,11 +1298,7 @@ impl TaskApp {
                         None => {
                             // No committed run: retire the dispatch intent first,
                             // then the cancellation marker, in receipt order.
-                            self.begin_cancel_retirement(
-                                run_id,
-                                operation_key.clone(),
-                                cx,
-                            );
+                            self.begin_cancel_retirement(run_id, operation_key.clone(), cx);
                         }
                     }
                     changed = true;
@@ -1304,9 +1306,8 @@ impl TaskApp {
                 crate::dispatch_admission::AdmissionUpdate::CancelReleased { operation_key } => {
                     self.dispatch_cancelled
                         .retain(|_, key| key.as_str() != operation_key.as_str());
-                    self.dispatch_cancel_retire.retain(|pending| {
-                        pending.operation_key.as_str() != operation_key.as_str()
-                    });
+                    self.dispatch_cancel_retire
+                        .retain(|pending| pending.operation_key.as_str() != operation_key.as_str());
                     changed = true;
                 }
                 crate::dispatch_admission::AdmissionUpdate::CancelFailed {
@@ -1411,9 +1412,7 @@ impl TaskApp {
                 .dispatch_admission
                 .as_ref()
                 .and_then(|adapter| adapter.launch_claim_for_run(run_id))
-                .unwrap_or_else(|| {
-                    format!("dispatch:{occurrence:?}:run:{run_id}")
-                });
+                .unwrap_or_else(|| format!("dispatch:{occurrence:?}:run:{run_id}"));
             if self.dispatch_launched.contains(&operation_key) {
                 continue;
             }
@@ -1450,19 +1449,16 @@ impl TaskApp {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if self.dispatch_resolution_pending.is_some() {
-            return Err("A launch-outcome resolution is already pending; wait for it to finish.".into());
+            return Err(
+                "A launch-outcome resolution is already pending; wait for it to finish.".into(),
+            );
         }
         let operation_key = self
             .store
             .runs()
             .iter()
             .find(|run| run.id == run_id)
-            .map(|run| {
-                format!(
-                    "dispatch:{:?}:run:{}",
-                    run.automation_occurrence_id, run.id
-                )
-            })
+            .map(|run| format!("dispatch:{:?}:run:{}", run.automation_occurrence_id, run.id))
             .ok_or_else(|| "The run is no longer available.".to_string())?;
         let claimed = self
             .dispatch_admission
@@ -1491,8 +1487,7 @@ impl TaskApp {
             ));
             return Err(error);
         }
-        self.dispatch_resolution_pending =
-            Some((operation_key, run_id, rerun, replacement));
+        self.dispatch_resolution_pending = Some((operation_key, run_id, rerun, replacement));
         cx.notify();
         Ok(())
     }
@@ -1513,8 +1508,7 @@ impl TaskApp {
             self.dispatch_resolution_pending =
                 Some((operation_key.to_string(), run_id, rerun, replacement));
         }
-        let Some((key, run_id, rerun, replacement)) =
-            self.dispatch_resolution_pending.clone()
+        let Some((key, run_id, rerun, replacement)) = self.dispatch_resolution_pending.clone()
         else {
             return;
         };
@@ -1522,11 +1516,8 @@ impl TaskApp {
             return;
         }
         if let Some(new_id) = replacement {
-            self.store.set_run_id_floor(
-                self.store
-                    .run_id_floor()
-                    .max(new_id.saturating_add(1)),
-            );
+            self.store
+                .set_run_id_floor(self.store.run_id_floor().max(new_id.saturating_add(1)));
         }
         if let Some(mut run) = self.store.run_mut(run_id) {
             if run.status != "Blocked" {
@@ -1540,7 +1531,12 @@ impl TaskApp {
                 .into());
             }
         }
-        let blocked = self.store.runs().iter().find(|run| run.id == run_id).cloned();
+        let blocked = self
+            .store
+            .runs()
+            .iter()
+            .find(|run| run.id == run_id)
+            .cloned();
         let Some(blocked) = blocked else {
             return;
         };
@@ -1598,9 +1594,7 @@ impl TaskApp {
                     Some("The rerun source task is no longer available.".into());
                 return false;
             };
-            if existing.task_id != task_id
-                || existing.automation_occurrence_id != occurrence
-            {
+            if existing.task_id != task_id || existing.automation_occurrence_id != occurrence {
                 self.dispatch_admission_error = Some(format!(
                     "Run {new_id} already belongs to unrelated work; the rerun decision was retained."
                 ));
@@ -1683,8 +1677,10 @@ impl TaskApp {
         if !already_scheduled && matches!(live_status.as_str(), "Queued" | "Interrupted") {
             self.dispatch_launched.insert(operation_key.to_string());
             self.apply_effects(vec![CommandEffect::QueueRun { run_id }], cx);
-            if let Some(entry) =
-                self.queued_runs.iter_mut().find(|(queued, _)| *queued == run_id)
+            if let Some(entry) = self
+                .queued_runs
+                .iter_mut()
+                .find(|(queued, _)| *queued == run_id)
                 && let Some(files) = self.dispatch_awaiting_files.take()
             {
                 entry.1 = files;
@@ -1752,8 +1748,7 @@ impl TaskApp {
                 }
             }
         }
-        let rerun_now =
-            retirement.rerun && retirement.claim_done && !retirement.decision_started;
+        let rerun_now = retirement.rerun && retirement.claim_done && !retirement.decision_started;
         let mut rerun_started = false;
         if rerun_now {
             rerun_started = false;
@@ -1836,15 +1831,18 @@ impl TaskApp {
                 // retired after that resolution status is durable.
                 continue;
             }
-            let confirmed = self.last_saved.runs().iter().find(|run| run.id == run_id).is_some_and(|run| {
-                matches!(
-                    run.status.as_str(),
-                    "Running" | "Succeeded" | "Failed" | "Blocked" | "Cancelled" | "Stale"
-                )
-            });
-            if confirmed
-                && let Some(adapter) = self.dispatch_admission.as_mut()
-            {
+            let confirmed = self
+                .last_saved
+                .runs()
+                .iter()
+                .find(|run| run.id == run_id)
+                .is_some_and(|run| {
+                    matches!(
+                        run.status.as_str(),
+                        "Running" | "Succeeded" | "Failed" | "Blocked" | "Cancelled" | "Stale"
+                    )
+                });
+            if confirmed && let Some(adapter) = self.dispatch_admission.as_mut() {
                 let _ = adapter.release_launch_claim(&operation_key);
                 changed = true;
             }
@@ -1977,8 +1975,7 @@ impl TaskApp {
                     .is_some_and(|adapter| adapter.resolution(&key).is_none());
                 if marker_missing
                     && let Some(adapter) = self.dispatch_admission.as_mut()
-                    && let Err(error) =
-                        adapter.persist_resolution(&key, rerun, replacement)
+                    && let Err(error) = adapter.persist_resolution(&key, rerun, replacement)
                 {
                     self.dispatch_admission_error = Some(format!(
                         "The resolution decision still could not be persisted: {error}"
@@ -2010,9 +2007,8 @@ impl TaskApp {
                     let files = match self.committed_run_files(run_id) {
                         Ok(files) => files,
                         Err(error) => {
-                            self.error = format!(
-                                "The committed run's materials are unavailable: {error}"
-                            );
+                            self.error =
+                                format!("The committed run's materials are unavailable: {error}");
                             return;
                         }
                     };
@@ -2277,7 +2273,9 @@ impl TaskApp {
                 .map(|run| run.id)
                 .collect();
             for run_id in ids {
-                let Some(mut run) = self.store.run_mut(run_id) else { continue };
+                let Some(mut run) = self.store.run_mut(run_id) else {
+                    continue;
+                };
                 run.status = "Cancelled".into();
                 run.ended_at = Some(crate::opencode::timestamp());
                 run.logs.push(

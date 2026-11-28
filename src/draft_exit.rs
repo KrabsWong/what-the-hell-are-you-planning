@@ -9,22 +9,22 @@
 //! must come from a real save entry point: a decision proceeds only after a
 //! confirmed save, never on "no error observed".
 
-use std::collections::BTreeMap;
-
 use crate::automation_views::AutomationDraft;
 use crate::navigation_context::{DismissibleSurface, NavigationTarget};
 
 /// A surface that can hold user input the user did not commit yet.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DraftSurface {
-    TaskEdit { task: u64 },
+    TaskEdit {
+        task: u64,
+    },
     /// `editing` is `Some(id)` for an existing definition, `None` for a new one.
-    AutomationWizard { editing: Option<u64> },
-    /// The project/topic research request composer (New research, topic New
-    /// research, topic Replan).
+    AutomationWizard {
+        editing: Option<u64>,
+    },
+    /// The project research request composer, topic replan and automation
+    /// request composer.
     PlanningRequest,
-    /// The inline comment composer of one task. Preserved per task.
-    Comment { task: u64 },
     /// The inline composer on the Market research page. Preserved as a page
     /// draft (destination + text).
     ResearchComposer,
@@ -53,7 +53,7 @@ pub(crate) fn draft_class(surface: DraftSurface) -> DraftClass {
         DraftSurface::TaskEdit { .. }
         | DraftSurface::AutomationWizard { .. }
         | DraftSurface::PlanningRequest => DraftClass::Decision,
-        DraftSurface::Comment { .. } | DraftSurface::ResearchComposer => DraftClass::Preserved,
+        DraftSurface::ResearchComposer => DraftClass::Preserved,
     }
 }
 
@@ -64,7 +64,7 @@ pub(crate) fn decision_surface(surface: DraftSurface) -> Option<DecisionSurface>
             Some(DecisionSurface::AutomationWizard { editing })
         }
         DraftSurface::PlanningRequest => Some(DecisionSurface::PlanningRequest),
-        DraftSurface::Comment { .. } | DraftSurface::ResearchComposer => None,
+        DraftSurface::ResearchComposer => None,
     }
 }
 
@@ -73,12 +73,9 @@ pub(crate) fn decision_surface(surface: DraftSurface) -> Option<DecisionSurface>
 pub(crate) struct TaskEditValues {
     pub title: String,
     pub description: String,
-    /// Normalized: trimmed, empty entries removed, order as entered.
-    pub labels: Vec<String>,
     pub due_date: String,
     pub project: u64,
     pub stage: crate::domain::Stage,
-    pub cycle: Option<String>,
 }
 
 /// Any difference in a task-editor field is unsaved user input.
@@ -89,7 +86,10 @@ pub(crate) fn task_edit_dirty(stored: &TaskEditValues, current: &TaskEditValues)
 /// A whole automation form, including the reviewed plan. `AutomationDraft`
 /// excludes the wizard step, so moving between steps is not dirt. The caller
 /// must rebase the baseline when the wizard accepts a plan for its own attempt.
-pub(crate) fn automation_draft_dirty(baseline: &AutomationDraft, current: &AutomationDraft) -> bool {
+pub(crate) fn automation_draft_dirty(
+    baseline: &AutomationDraft,
+    current: &AutomationDraft,
+) -> bool {
     baseline != current
 }
 
@@ -98,44 +98,6 @@ pub(crate) fn automation_draft_dirty(baseline: &AutomationDraft, current: &Autom
 /// replan text is a change.
 pub(crate) fn text_draft_dirty(baseline: &str, current: &str) -> bool {
     baseline.trim() != current.trim()
-}
-
-/// An inline comment has no baseline: any non-empty text is unsaved input.
-pub(crate) fn comment_draft_dirty(current: &str) -> bool {
-    !current.trim().is_empty()
-}
-
-/// Per-task text slots so switching tasks never drops a typed comment.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PerTaskText {
-    values: BTreeMap<u64, String>,
-}
-
-impl PerTaskText {
-    pub(crate) fn set(&mut self, task: u64, text: impl Into<String>) {
-        let text = text.into();
-        if text.trim().is_empty() {
-            self.values.remove(&task);
-        } else {
-            self.values.insert(task, text);
-        }
-    }
-
-    pub(crate) fn get(&self, task: u64) -> Option<&str> {
-        self.values.get(&task).map(String::as_str)
-    }
-
-    pub(crate) fn take(&mut self, task: u64) -> Option<String> {
-        self.values.remove(&task)
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.values.is_empty()
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.values.len()
-    }
 }
 
 /// A preserved page draft for the Market research composer. Destination and
@@ -157,11 +119,18 @@ pub(crate) enum ExitTarget {
     Navigate(NavigationTarget),
     /// Clear return history and go to the structural target.
     Structural(NavigationTarget),
-    NewResearch,
     Dismiss(DismissibleSurface),
-    SidebarTask { project: u64, task: u64 },
-    Recent { task: u64, surface: crate::navigation_context::RecentSurface },
-    CancelWizard { editing: Option<u64> },
+    SidebarTask {
+        project: u64,
+        task: u64,
+    },
+    Recent {
+        task: u64,
+        surface: crate::navigation_context::RecentSurface,
+    },
+    CancelWizard {
+        editing: Option<u64>,
+    },
     CancelPlanning,
 }
 
@@ -218,9 +187,7 @@ pub(crate) fn resolve_decision(
             SaveOutcome::Saved => DecisionOutcome::Proceed(pending.target.clone()),
             SaveOutcome::Pending(message) => DecisionOutcome::Pending { message },
             SaveOutcome::Rejected(error) | SaveOutcome::Unavailable(error) => {
-                DecisionOutcome::Stay {
-                    error: Some(error),
-                }
+                DecisionOutcome::Stay { error: Some(error) }
             }
         },
     }
@@ -289,8 +256,8 @@ pub(crate) fn decision_explanation(surface: DecisionSurface) -> &'static str {
 mod tests {
     use super::*;
     use crate::automation::AutomationShape;
-    use crate::automation_views::AutomationDraftDefaults;
     use crate::automation_schedule::CatchUp;
+    use crate::automation_views::AutomationDraftDefaults;
 
     fn baseline() -> AutomationDraft {
         AutomationDraft::new(&AutomationDraftDefaults {
@@ -302,11 +269,9 @@ mod tests {
         TaskEditValues {
             title: "Title".into(),
             description: "Description".into(),
-            labels: vec!["one".into(), "two".into()],
             due_date: "2026-11-08".into(),
             project: 1,
-            stage: crate::domain::Stage::Planned,
-            cycle: None,
+            stage: crate::domain::Stage::InProgress,
         }
     }
 
@@ -322,9 +287,6 @@ mod tests {
         value.description = "Other".into();
         cases.push(value);
         let mut value = stored.clone();
-        value.labels = vec!["one".into()];
-        cases.push(value);
-        let mut value = stored.clone();
         value.due_date = "2026-12-01".into();
         cases.push(value);
         let mut value = stored.clone();
@@ -332,9 +294,6 @@ mod tests {
         cases.push(value);
         let mut value = stored.clone();
         value.stage = crate::domain::Stage::Done;
-        cases.push(value);
-        let mut value = stored.clone();
-        value.cycle = Some("Sprint".into());
         cases.push(value);
         for value in cases {
             assert!(task_edit_dirty(&stored, &value));
@@ -379,9 +338,7 @@ mod tests {
         assert!(automation_draft_dirty(&base, &changed));
 
         let mut changed = base.clone();
-        changed.plan = Some(
-            crate::automation_execution::build_template("Plan", "Output").unwrap(),
-        );
+        changed.plan = Some(crate::automation_execution::build_template("Plan", "Output").unwrap());
         assert!(automation_draft_dirty(&base, &changed));
     }
 
@@ -406,22 +363,6 @@ mod tests {
     }
 
     #[test]
-    fn comments_are_preserved_per_task() {
-        let mut comments = PerTaskText::default();
-        assert!(!comment_draft_dirty("  "));
-        assert!(comment_draft_dirty("A note"));
-        comments.set(1, "Task one note");
-        comments.set(2, "Task two note");
-        assert_eq!(comments.get(1), Some("Task one note"));
-        assert_eq!(comments.get(2), Some("Task two note"));
-        comments.set(1, "   ");
-        assert_eq!(comments.get(1), None);
-        assert_eq!(comments.len(), 1);
-        assert_eq!(comments.take(2).as_deref(), Some("Task two note"));
-        assert!(comments.is_empty());
-    }
-
-    #[test]
     fn decision_classes_match_the_approved_policy() {
         assert_eq!(
             draft_class(DraftSurface::TaskEdit { task: 1 }),
@@ -436,21 +377,10 @@ mod tests {
             DraftClass::Decision
         );
         assert_eq!(
-            draft_class(DraftSurface::Comment { task: 1 }),
-            DraftClass::Preserved
-        );
-        assert_eq!(
             draft_class(DraftSurface::ResearchComposer),
             DraftClass::Preserved
         );
-        assert_eq!(
-            decision_surface(DraftSurface::Comment { task: 1 }),
-            None
-        );
-        assert_eq!(
-            decision_surface(DraftSurface::ResearchComposer),
-            None
-        );
+        assert_eq!(decision_surface(DraftSurface::ResearchComposer), None);
     }
 
     #[test]

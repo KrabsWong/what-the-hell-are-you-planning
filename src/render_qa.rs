@@ -47,7 +47,11 @@ fn schema_version(path: &Path) -> Result<u32, String> {
 /// itself is only read.
 pub(crate) fn load_workspace(path: &Path) -> Result<Store, String> {
     let storage = Storage::new(path.to_path_buf());
-    if path.extension().is_some_and(|extension| extension == "sqlite3") && path.is_file() {
+    if path
+        .extension()
+        .is_some_and(|extension| extension == "sqlite3")
+        && path.is_file()
+    {
         for suffix in ["-wal", "-journal"] {
             let sidecar = sidecar(path, suffix);
             if sidecar.is_file() {
@@ -85,9 +89,8 @@ pub(crate) fn load_workspace(path: &Path) -> Result<Store, String> {
 }
 
 pub fn run() {
-    let path = PathBuf::from(
-        std::env::var("PLANNING_PERF_WORKSPACE").expect("PLANNING_PERF_WORKSPACE"),
-    );
+    let path =
+        PathBuf::from(std::env::var("PLANNING_PERF_WORKSPACE").expect("PLANNING_PERF_WORKSPACE"));
     let store = load_workspace(&path).unwrap();
     let start = Instant::now();
     for _ in 0..10 {
@@ -132,9 +135,6 @@ pub fn run() {
         .rev()
         .find(|r| r.project_plan.is_none() && r.status == "Succeeded" && !r.output.is_empty());
     let goal = result.and_then(|r| store.owning_research_goal(r.task_id));
-    if goal.is_some() {
-        panels.push(("Steps", Scope::All));
-    }
     if result.is_some() {
         panels.push(("Report", Scope::Runs));
     }
@@ -142,9 +142,6 @@ pub fn run() {
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| {
                 a.navigate(scope, w, cx);
-                if name == "Steps" {
-                    a.open_goal_steps(goal.unwrap(), w, cx);
-                }
                 if name == "Report" {
                     a.note_selected_run(result.map(|r| r.id));
                     a.show_run_result = true;
@@ -186,10 +183,8 @@ mod tests {
     }
 
     fn temp_root(label: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "planning-render-{label}-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("planning-render-{label}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         root
@@ -254,12 +249,27 @@ mod tests {
 pub fn scroll_native() {
     use crate::appearance::Appearance;
     use std::time::Duration;
-    let store = load_workspace(Path::new(&std::env::var("PLANNING_PERF_WORKSPACE").unwrap())).unwrap();
-    let result = store.runs().iter().rev().find(|r| r.project_plan.is_none()
-        && r.status == "Succeeded" && !r.output.is_empty()
-        && !store.run_is_automation_owned(r)).map(|r| r.id);
+    let store = load_workspace(Path::new(
+        &std::env::var("PLANNING_PERF_WORKSPACE").unwrap(),
+    ))
+    .unwrap();
+    let result = store
+        .runs()
+        .iter()
+        .rev()
+        .find(|r| {
+            r.project_plan.is_none()
+                && r.status == "Succeeded"
+                && !r.output.is_empty()
+                && !store.run_is_automation_owned(r)
+        })
+        .map(|r| r.id);
     let dark = std::env::var("PLANNING_SCROLL_DARK").as_deref() == Ok("1");
-    let mode = if dark { Appearance::Dark } else { Appearance::Light };
+    let mode = if dark {
+        Appearance::Dark
+    } else {
+        Appearance::Light
+    };
     application().with_assets(crate::ui_assets::AppAssets).run(move |cx| {
         init(cx);
         let (handle, app) = open_window(WindowOptions {

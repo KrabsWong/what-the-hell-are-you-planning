@@ -10,8 +10,8 @@ use gpui_kit::{
         Disableable,
         button::ButtonVariants,
         input::{Input, InputState},
-        select::{Select, SelectState, SelectItem, SelectEvent, SearchableVec},
         menu::{DropdownMenu, PopupMenuItem},
+        select::{SearchableVec, Select, SelectEvent, SelectItem, SelectState},
     },
     prelude::FluentBuilder,
     *,
@@ -19,14 +19,30 @@ use gpui_kit::{
 
 pub(crate) fn topic_copy_tag(id: impl Into<SharedString>, cx: &App) -> AnyElement {
     chip("Copy", palette(cx).muted, cx)
-        .id(id.into()).role(Role::Label).aria_label(crate::i18n::tr("Copy of another topic"))
-        .bg(rgb(palette(cx).tag_surface)).border_1().border_color(rgb(palette(cx).border_strong)).font_weight(FontWeight::NORMAL)
-        .flex_shrink_0().whitespace_nowrap()
-        .tooltip(|w, cx| component::tooltip::Tooltip::new("Created from another topic; open the topic to view its source.").build(w, cx))
+        .id(id.into())
+        .role(Role::Label)
+        .aria_label(crate::i18n::tr("Copy of another topic"))
+        .bg(rgb(palette(cx).tag_surface))
+        .border_1()
+        .border_color(rgb(palette(cx).border_strong))
+        .font_weight(FontWeight::NORMAL)
+        .flex_shrink_0()
+        .whitespace_nowrap()
+        .tooltip(|w, cx| {
+            component::tooltip::Tooltip::new(
+                "Created from another topic; open the topic to view its source.",
+            )
+            .build(w, cx)
+        })
         .map(observed)
 }
 
-fn topic_intake_tag(id: impl Into<SharedString>, status: crate::request_planning::TopicIntakeStatus, compact: bool, cx: &App) -> AnyElement {
+fn topic_intake_tag(
+    id: impl Into<SharedString>,
+    status: crate::request_planning::TopicIntakeStatus,
+    compact: bool,
+    cx: &App,
+) -> AnyElement {
     use crate::request_planning::TopicIntakeStatus;
     let colors = palette(cx);
     let color = match status {
@@ -43,35 +59,58 @@ fn topic_intake_tag(id: impl Into<SharedString>, status: crate::request_planning
             TopicIntakeStatus::Interrupted => crate::i18n::tr_string("Paused"),
             _ => crate::i18n::tr_string(status.label()),
         }
-    } else { crate::i18n::tr_string(status.label()) };
+    } else {
+        crate::i18n::tr_string(status.label())
+    };
     chip(label, color, cx)
         .when(compact, |d| d.px_1().text_size(px(11.)))
-        .id(id.into()).role(Role::Label).aria_label(crate::i18n::tr(crate::i18n::tr_string(status.label())))
-        .tooltip(move |w, cx| component::tooltip::Tooltip::new(crate::i18n::tr_string(status.label())).build(w, cx))
-        .bg(rgb(colors.tag_surface)).border_1().border_color(rgb(colors.border_strong)).font_weight(FontWeight::NORMAL)
-        .flex_shrink_0().whitespace_nowrap().map(observed)
+        .id(id.into())
+        .role(Role::Label)
+        .aria_label(crate::i18n::tr(crate::i18n::tr_string(status.label())))
+        .tooltip(move |w, cx| {
+            component::tooltip::Tooltip::new(crate::i18n::tr_string(status.label())).build(w, cx)
+        })
+        .bg(rgb(colors.tag_surface))
+        .border_1()
+        .border_color(rgb(colors.border_strong))
+        .font_weight(FontWeight::NORMAL)
+        .flex_shrink_0()
+        .whitespace_nowrap()
+        .map(observed)
 }
 
 struct TopicTitleTags(Option<crate::request_planning::TopicIntakeStatus>);
 
 impl gpui_kit::base::text::MarkdownPlugin for TopicTitleTags {
-    fn name(&self) -> &str { "topic-title-tag" }
+    fn name(&self) -> &str {
+        "topic-title-tag"
+    }
 
-    fn parse(&self, node: &gpui_kit::base::text::markdown_ast::Node,
-        _: &gpui_kit::base::text::MarkdownParseContext<'_>) -> Option<gpui_kit::base::text::MarkdownNode> {
+    fn parse(
+        &self,
+        node: &gpui_kit::base::text::markdown_ast::Node,
+        _: &gpui_kit::base::text::MarkdownParseContext<'_>,
+    ) -> Option<gpui_kit::base::text::MarkdownNode> {
         use gpui_kit::base::text::{MarkdownNode, markdown_ast::Node};
-        let Node::Link(link) = node else { return None; };
+        let Node::Link(link) = node else {
+            return None;
+        };
         match link.url.as_str() {
             "topic-tag:copy" => Some(MarkdownNode::new(self.name(), true).text("Copy")),
-            "topic-tag:status" => self.0.map(|status|
-                MarkdownNode::new(self.name(), false).text(crate::i18n::tr_string(status.label()))),
+            "topic-tag:status" => self.0.map(|status| {
+                MarkdownNode::new(self.name(), false).text(crate::i18n::tr_string(status.label()))
+            }),
             _ => None,
         }
     }
 
-    fn render_inline(&self, node: &gpui_kit::base::text::MarkdownNode,
-        _: &gpui_kit::base::text::InlineRenderContext, _: &mut Window, cx: &mut App)
-        -> Option<gpui_kit::base::text::InlineElement> {
+    fn render_inline(
+        &self,
+        node: &gpui_kit::base::text::MarkdownNode,
+        _: &gpui_kit::base::text::InlineRenderContext,
+        _: &mut Window,
+        cx: &mut App,
+    ) -> Option<gpui_kit::base::text::InlineElement> {
         let tag = if *node.data::<bool>()? {
             topic_copy_tag("topic-copy-indicator", cx)
         } else {
@@ -81,20 +120,31 @@ impl gpui_kit::base::text::MarkdownPlugin for TopicTitleTags {
     }
 }
 
-fn topic_inline_title(topic: &Topic, status: Option<crate::request_planning::TopicIntakeStatus>) -> AnyElement {
+fn topic_inline_title(
+    topic: &Topic,
+    status: Option<crate::request_planning::TopicIntakeStatus>,
+) -> AnyElement {
     let mut text = String::new();
-    if topic.replanned_from.is_some() { text.push_str("[Copy](topic-tag:copy) "); }
+    if topic.replanned_from.is_some() {
+        text.push_str("[Copy](topic-tag:copy) ");
+    }
     if let Some(status) = status {
-        text.push_str(&format!("[{}](topic-tag:status) ", crate::i18n::tr_string(status.label())));
+        text.push_str(&format!(
+            "[{}](topic-tag:status) ",
+            crate::i18n::tr_string(status.label())
+        ));
     }
     // Treat the user-authored title as literal text, never Markdown syntax.
     for ch in topic.display_name().chars() {
-        if ch.is_ascii_punctuation() { text.push('\\'); }
+        if ch.is_ascii_punctuation() {
+            text.push('\\');
+        }
         text.push(if ch == '\n' || ch == '\r' { ' ' } else { ch });
     }
     gpui_kit::base::text::TextView::markdown("topic-inline-title", text)
         .plugin(TopicTitleTags(status))
-        .text_lg().font_weight(FontWeight::SEMIBOLD)
+        .text_lg()
+        .font_weight(FontWeight::SEMIBOLD)
         .into_any_element()
 }
 
@@ -121,11 +171,18 @@ pub(crate) fn topic_context_title(
 }
 
 #[derive(Clone)]
-pub(crate) struct ProjectChoice { pub id: u64, pub title: SharedString }
+pub(crate) struct ProjectChoice {
+    pub id: u64,
+    pub title: SharedString,
+}
 impl SelectItem for ProjectChoice {
     type Value = u64;
-    fn title(&self) -> SharedString { self.title.clone() }
-    fn value(&self) -> &u64 { &self.id }
+    fn title(&self) -> SharedString {
+        self.title.clone()
+    }
+    fn value(&self) -> &u64 {
+        &self.id
+    }
 }
 pub(crate) struct TopicMoveDialog {
     topic: u64,
@@ -134,27 +191,59 @@ pub(crate) struct TopicMoveDialog {
 }
 
 impl TaskApp {
-    pub(crate) fn request_topic_move(&mut self, topic: u64, w: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn request_topic_move(
+        &mut self,
+        topic: u64,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.remember_dialog_opener(w, cx);
-        let Some(current) = self.store.topics().iter().find(|t| t.id == topic) else { return; };
-        let choices: Vec<_> = self.store.visible_projects().filter(|p| p.id != current.project_id)
-            .map(|p| ProjectChoice { id: p.id, title: format!("{} · {} (#{})", p.name, p.key, p.id).into() }).collect();
+        let Some(current) = self.store.topics().iter().find(|t| t.id == topic) else {
+            return;
+        };
+        let choices: Vec<_> = self
+            .store
+            .visible_projects()
+            .filter(|p| p.id != current.project_id)
+            .map(|p| ProjectChoice {
+                id: p.id,
+                title: format!("{} · {} (#{})", p.name, p.key, p.id).into(),
+            })
+            .collect();
         let has_destinations = !choices.is_empty();
-        let projects = cx.new(|cx| SelectState::new(SearchableVec::new(choices), None, w, cx).searchable(true));
-        cx.subscribe(&projects, |_, _, _: &SelectEvent<SearchableVec<ProjectChoice>>, cx| cx.notify()).detach();
+        let projects = cx
+            .new(|cx| SelectState::new(SearchableVec::new(choices), None, w, cx).searchable(true));
+        cx.subscribe(
+            &projects,
+            |_, _, _: &SelectEvent<SearchableVec<ProjectChoice>>, cx| cx.notify(),
+        )
+        .detach();
         self.clear_navigation_overlays();
-        self.topic_move = Some(TopicMoveDialog { topic, projects, has_destinations });
+        self.topic_move = Some(TopicMoveDialog {
+            topic,
+            projects,
+            has_destinations,
+        });
         w.focus(&self.modal_focus, cx);
         cx.notify();
     }
 
     pub(crate) fn confirm_topic_move(&mut self, w: &mut Window, cx: &mut Context<Self>) {
-        let Some(dialog) = &self.topic_move else { return; };
+        let Some(dialog) = &self.topic_move else {
+            return;
+        };
         let topic = dialog.topic;
-        let Some(project) = dialog.projects.read(cx).selected_value().copied() else { return; };
+        let Some(project) = dialog.projects.read(cx).selected_value().copied() else {
+            return;
+        };
         // The modal also renders live blockers; repeat validation at the mutation boundary.
-        let blockers = self.store.topic_move_blockers(topic, self.todo_batch.as_ref());
-        if !blockers.is_empty() { cx.notify(); return; }
+        let blockers = self
+            .store
+            .topic_move_blockers(topic, self.todo_batch.as_ref());
+        if !blockers.is_empty() {
+            cx.notify();
+            return;
+        }
         let saved = self
             .apply_domain_command_undoable(
                 crate::scoped_domain::DomainCommand::TopicMove { topic, project },
@@ -163,15 +252,18 @@ impl TaskApp {
             )
             .is_some();
         if saved {
-            if self.research_topic == Some(topic) { self.research_project = project; }
+            if self.research_topic == Some(topic) {
+                self.research_project = project;
+            }
             if self.planning_topic == Some(topic) {
                 self.bump_planning_form_epoch();
                 self.planning_project = Some(project);
-                self.planning_destination = Some(
-                    crate::navigation_context::CreationMode::ExistingTopic { project, topic },
-                );
+                self.planning_destination =
+                    Some(crate::navigation_context::CreationMode::ExistingTopic { project, topic });
             }
-            if !self.expanded_sidebar_projects.contains(&project) { self.expanded_sidebar_projects.push(project); }
+            if !self.expanded_sidebar_projects.contains(&project) {
+                self.expanded_sidebar_projects.push(project);
+            }
             self.topic_move = None;
             w.focus(&self.focus, cx);
         }
@@ -182,32 +274,83 @@ impl TaskApp {
         let colors = palette(cx);
         let topic = self.store.topics().iter().find(|t| t.id == dialog.topic);
         let name = topic.map(|t| t.display_name()).unwrap_or_default();
-        let source = topic.and_then(|t| self.store.projects().iter().find(|p| p.id == t.project_id)).map(|p| p.name.clone()).unwrap_or_default();
-        let count = self.store.tasks().iter().filter(|t| t.automation_id.is_none() && self.store.task_topic(t.id).is_some_and(|t| t.id == dialog.topic)).count();
-        let blockers = self.store.topic_move_blockers(dialog.topic, self.todo_batch.as_ref());
+        let source = topic
+            .and_then(|t| self.store.projects().iter().find(|p| p.id == t.project_id))
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        let count = self
+            .store
+            .tasks()
+            .iter()
+            .filter(|t| {
+                t.automation_id.is_none()
+                    && self
+                        .store
+                        .task_topic(t.id)
+                        .is_some_and(|t| t.id == dialog.topic)
+            })
+            .count();
+        let blockers = self
+            .store
+            .topic_move_blockers(dialog.topic, self.todo_batch.as_ref());
         let blocked = !blockers.is_empty();
         let selected = dialog.projects.read(cx).selected_value().copied();
         let destination = selected.and_then(|id| self.store.projects().iter().find(|p| p.id == id));
-        let mut body = col().id("topic-move-body").min_h_0().max_h(px(360.)).overflow_y_scroll().gap_3()
+        let mut body = col()
+            .id("topic-move-body")
+            .min_h_0()
+            .max_h(px(360.))
+            .overflow_y_scroll()
+            .gap_3()
             .child(label(format!("{name} · From {source} · {count} tasks"), cx));
         if blocked {
             body = body.child(muted(format!("{} blocking items. Resolve these before moving; no tasks will be stopped automatically.", blockers.len()), cx));
             for (index, blocker) in blockers.iter().enumerate() {
                 let (title, remedy) = blocker.split_once('\n').unwrap_or((blocker, ""));
-                body = body.child(col().p_3().gap_2().rounded(px(crate::appearance::GROUP_RADIUS)).bg(rgb(colors.side))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(selectable(format!("{}. {title}", index + 1))))
-                    .child(muted(remedy.trim().to_string(), cx)));
+                body = body.child(
+                    col()
+                        .p_3()
+                        .gap_2()
+                        .rounded(px(crate::appearance::GROUP_RADIUS))
+                        .bg(rgb(colors.side))
+                        .child(
+                            div()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(selectable(format!("{}. {title}", index + 1))),
+                        )
+                        .child(muted(remedy.trim().to_string(), cx)),
+                );
             }
         } else {
             body = body.child(muted("All goals, child tasks (including archived tasks), research requests and dependencies move together. Existing reports and materials stay at their current file locations.", cx));
             if dialog.has_destinations {
-                body = body.child(label("Destination project", cx))
-                    .child(Select::new(&dialog.projects).id("topic-move-project").accessibility_label(crate::i18n::tr("Destination project")).w_full().menu_max_h(px(220.))
-                        .placeholder(crate::i18n::tr("Choose a project…")).search_placeholder(crate::i18n::tr("Search projects…")))
-                    .child(muted(destination.map(|p| format!("Confirm to move the entire topic from {source} to {}.", p.name))
-                        .unwrap_or("Select a destination, then confirm the move below.".into()), cx));
+                body = body
+                    .child(label("Destination project", cx))
+                    .child(
+                        Select::new(&dialog.projects)
+                            .id("topic-move-project")
+                            .accessibility_label(crate::i18n::tr("Destination project"))
+                            .w_full()
+                            .menu_max_h(px(220.))
+                            .placeholder(crate::i18n::tr("Choose a project…"))
+                            .search_placeholder(crate::i18n::tr("Search projects…")),
+                    )
+                    .child(muted(
+                        destination
+                            .map(|p| {
+                                format!(
+                                    "Confirm to move the entire topic from {source} to {}.",
+                                    p.name
+                                )
+                            })
+                            .unwrap_or("Select a destination, then confirm the move below.".into()),
+                        cx,
+                    ));
             } else {
-                body = body.child(muted("No other projects available. Close this dialog and create a project first.", cx));
+                body = body.child(muted(
+                    "No other projects available. Close this dialog and create a project first.",
+                    cx,
+                ));
             }
         }
         if !self.error.is_empty() {
@@ -217,18 +360,60 @@ impl TaskApp {
                 cx,
             ));
         }
-        div().absolute().inset_0().occlude().bg(rgba(0x00000080)).flex().items_center().justify_center().p_4()
-            .child(col().w(px(600.)).max_w_full().p_6().gap_4().map(|d| crate::appearance::floating_surface(d, cx))
-                .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(crate::i18n::tr(if blocked { "Cannot move topic yet" } else { "Move topic" })))
-                .child(body)
-                .child(row().justify_end()
-                    .child(button("cancel-topic-move", if blocked { "Close" } else { "Cancel" }).on_click(cx.listener(|a, _, w, cx| {
-                        a.topic_move = None; a.error.clear(); a.restore_dialog_opener(w, cx); cx.notify();
-                    })))
-                    .when(!blocked, |d| d.child(primary_button("confirm-topic-move", "Move topic")
-                        .disabled(destination.is_none())
-                        .on_click(cx.listener(|a, _, w, cx| a.confirm_topic_move(w, cx)))))))
-            .focus_trap("topic-move-focus", &self.modal_focus).into_any_element()
+        div()
+            .absolute()
+            .inset_0()
+            .occlude()
+            .bg(rgba(0x00000080))
+            .flex()
+            .items_center()
+            .justify_center()
+            .p_4()
+            .child(
+                col()
+                    .w(px(600.))
+                    .max_w_full()
+                    .p_6()
+                    .gap_4()
+                    .map(|d| crate::appearance::floating_surface(d, cx))
+                    .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(
+                        crate::i18n::tr(if blocked {
+                            "Cannot move topic yet"
+                        } else {
+                            "Move topic"
+                        }),
+                    ))
+                    .child(body)
+                    .child(
+                        row()
+                            .justify_end()
+                            .child(
+                                button(
+                                    "cancel-topic-move",
+                                    if blocked { "Close" } else { "Cancel" },
+                                )
+                                .on_click(cx.listener(
+                                    |a, _, w, cx| {
+                                        a.topic_move = None;
+                                        a.error.clear();
+                                        a.restore_dialog_opener(w, cx);
+                                        cx.notify();
+                                    },
+                                )),
+                            )
+                            .when(!blocked, |d| {
+                                d.child(
+                                    primary_button("confirm-topic-move", "Move topic")
+                                        .disabled(destination.is_none())
+                                        .on_click(
+                                            cx.listener(|a, _, w, cx| a.confirm_topic_move(w, cx)),
+                                        ),
+                                )
+                            }),
+                    ),
+            )
+            .focus_trap("topic-move-focus", &self.modal_focus)
+            .into_any_element()
     }
 
     pub(crate) fn open_topic_editor(
@@ -362,20 +547,25 @@ impl TaskApp {
             .chain(topics.clone())
             {
                 let entity = entity.clone();
-                menu = menu.item(PopupMenuItem::new(crate::i18n::tr(name)).on_click(move |_, _, cx| {
-                    let _ = entity.update(cx, |a, cx| {
-                        if let Some(goal) = goal {
-                            a.apply_domain_command_undoable(
-                                crate::scoped_domain::DomainCommand::GoalTopic { goal, topic: id },
-                                "Topic updated",
-                                cx,
-                            );
-                        } else {
-                            a.research_topic = id;
-                            cx.notify();
-                        }
-                    });
-                }));
+                menu = menu.item(PopupMenuItem::new(crate::i18n::tr(name)).on_click(
+                    move |_, _, cx| {
+                        let _ = entity.update(cx, |a, cx| {
+                            if let Some(goal) = goal {
+                                a.apply_domain_command_undoable(
+                                    crate::scoped_domain::DomainCommand::GoalTopic {
+                                        goal,
+                                        topic: id,
+                                    },
+                                    "Topic updated",
+                                    cx,
+                                );
+                            } else {
+                                a.research_topic = id;
+                                cx.notify();
+                            }
+                        });
+                    },
+                ));
             }
             menu
         })
@@ -388,30 +578,53 @@ impl TaskApp {
                 .on_click(cx.listener(move |a, _, w, cx| a.open_topic_replan(topic, w, cx)))
                 .into_any_element();
         }
-        let requests: Vec<_> = self.store.research_requests().iter()
+        let requests: Vec<_> = self
+            .store
+            .research_requests()
+            .iter()
             .filter(|r| r.topic_id == Some(topic) && self.store.can_regenerate_request_plan(r.id))
-            .map(|r| (r.id, r.input.clone())).collect();
-        if requests.is_empty() { return div().into_any_element(); }
-        let active = self.store.research_requests().iter().filter(|r| r.topic_id == Some(topic))
-            .any(|r| r.planning_run_id.is_some_and(|id| self.store.runs().iter()
-                .any(|run| run.id == id && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling"))));
+            .map(|r| (r.id, r.input.clone()))
+            .collect();
+        if requests.is_empty() {
+            return div().into_any_element();
+        }
+        let active = self
+            .store
+            .research_requests()
+            .iter()
+            .filter(|r| r.topic_id == Some(topic))
+            .any(|r| {
+                r.planning_run_id.is_some_and(|id| {
+                    self.store.runs().iter().any(|run| {
+                        run.id == id
+                            && matches!(run.status.as_str(), "Queued" | "Running" | "Cancelling")
+                    })
+                })
+            });
         let action = button("regenerate-topic-plan", "Regenerate").disabled(active)
             .tooltip(crate::i18n::tr("Generate a replacement for an unapproved plan. Previous goals are archived only after the replacement is valid."));
         if requests.len() == 1 {
             let request = requests[0].0;
-            return action.on_click(cx.listener(move |a, _, _, cx| a.retry_research_request(request, cx))).into_any_element();
+            return action
+                .on_click(cx.listener(move |a, _, _, cx| a.retry_research_request(request, cx)))
+                .into_any_element();
         }
         let entity = cx.entity().downgrade();
-        action.dropdown_menu(move |mut menu, _, _| {
-            for (request, input) in &requests {
-                let request = *request;
-                let entity = entity.clone();
-                menu = menu.item(PopupMenuItem::new(crate::i18n::tr(input.clone())).on_click(move |_, _, cx| {
-                    let _ = entity.update(cx, |a, cx| a.retry_research_request(request, cx));
-                }));
-            }
-            menu
-        }).into_any_element()
+        action
+            .dropdown_menu(move |mut menu, _, _| {
+                for (request, input) in &requests {
+                    let request = *request;
+                    let entity = entity.clone();
+                    menu = menu.item(PopupMenuItem::new(crate::i18n::tr(input.clone())).on_click(
+                        move |_, _, cx| {
+                            let _ =
+                                entity.update(cx, |a, cx| a.retry_research_request(request, cx));
+                        },
+                    ));
+                }
+                menu
+            })
+            .into_any_element()
     }
 
     pub(crate) fn topic_sidebar_row(&self, topic: &Topic, cx: &mut Context<Self>) -> AnyElement {
@@ -423,8 +636,18 @@ impl TaskApp {
                 .and_then(|id| self.store.task_topic(id))
                 .is_some_and(|t| t.id == id);
         let status = self.store.topic_intake_status(id);
-        let description = format!("{}{}{}", if topic.replanned_from.is_some() { "Copy · " } else { "" },
-            topic.display_name(), status.map(|status| format!(" · {}", crate::i18n::tr_string(status.label()))).unwrap_or_default());
+        let description = format!(
+            "{}{}{}",
+            if topic.replanned_from.is_some() {
+                "Copy · "
+            } else {
+                ""
+            },
+            topic.display_name(),
+            status
+                .map(|status| format!(" · {}", crate::i18n::tr_string(status.label())))
+                .unwrap_or_default()
+        );
         row()
             .items_center()
             .gap_0()
@@ -441,11 +664,27 @@ impl TaskApp {
                     .h_8()
                     .tooltip(crate::i18n::tr(description.clone()))
                     .accessibility_label(crate::i18n::tr(description))
-                    .child(row().w_full().min_w_0().gap_1()
-                        .when(topic.replanned_from.is_some(), |d| d.child(topic_copy_tag(format!("topic-copy-{id}"), cx)))
-                        .when_some(status, |d, status| d.child(
-                            topic_intake_tag(format!("topic-intake-{id}"), status, true, cx)))
-                        .child(single_line_text(format!("topic-name-{id}"), topic.display_name()).map(observed)))
+                    .child(
+                        row()
+                            .w_full()
+                            .min_w_0()
+                            .gap_1()
+                            .when(topic.replanned_from.is_some(), |d| {
+                                d.child(topic_copy_tag(format!("topic-copy-{id}"), cx))
+                            })
+                            .when_some(status, |d, status| {
+                                d.child(topic_intake_tag(
+                                    format!("topic-intake-{id}"),
+                                    status,
+                                    true,
+                                    cx,
+                                ))
+                            })
+                            .child(
+                                single_line_text(format!("topic-name-{id}"), topic.display_name())
+                                    .map(observed),
+                            ),
+                    )
                     .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx))),
             )
             .child(
@@ -472,18 +711,24 @@ impl TaskApp {
             .into_any_element()
     }
 
-    pub(crate) fn topic_directory(&self, project: Option<u64>, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn topic_directory(
+        &self,
+        project: Option<u64>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let topics: Vec<_> = self
             .store
             .topics()
             .iter()
-            .filter(|t| project.is_none_or(|id| t.project_id == id)
+            .filter(|t| {
+                project.is_none_or(|id| t.project_id == id)
                 && t.archived == project.is_none()
                 // The Archive topic strip omits topics left without goals.
                 // Deleting the last goal also removes the empty topic itself.
                 && (project.is_some() || self.store.tasks().iter().any(|task|
                     task.parent_id.is_none()
-                        && self.store.task_topic(task.id).is_some_and(|topic| topic.id == t.id))))
+                        && self.store.task_topic(task.id).is_some_and(|topic| topic.id == t.id)))
+            })
             .collect();
         if topics.is_empty() {
             return div().into_any_element();
@@ -495,50 +740,84 @@ impl TaskApp {
             .gap_2()
             .min_w_0()
             .flex_shrink_0()
-            .child(row().justify_between()
-                .child(label(format!("TOPICS · {}", topics.len()), cx))
-                .child(label("Scroll to browse · Click to open", cx)))
-            .child(row()
-                .id("topic-directory-scroll")
-                .w_full()
-                .min_w_0()
-                .gap_2()
-                .pb_2()
-                .overflow_x_scroll()
-                .restrict_scroll_to_axis()
-                .children(topics.into_iter().map(|t| {
-                    let id = t.id;
-                    let title = t.display_name();
-                    let count = self.store.tasks().iter()
-                        .filter(|task| task.parent_id.is_none()
-                            && self.store.task_topic(task.id).is_some_and(|topic| topic.id == id))
-                        .count();
-                    let status = self.store.topic_planning_status(id)
-                        .map(|s| format!(" · {s}")).unwrap_or_default();
-                    button(format!("topic-link-{id}"), "")
-                        .w(px(260.))
-                        .h(px(64.))
-                        .rounded(px(crate::appearance::GROUP_RADIUS))
-                        .flex_shrink_0()
-                        .border_1()
-                        .border_color(rgb(colors.line))
-                        .bg(rgb(colors.panel))
-                        .tooltip(crate::i18n::tr(title.clone()))
-                        .accessibility_label(crate::i18n::tr(title.clone()))
-                        .child(col().w_full().min_w_0().gap_1()
-                            .child(row().w_full().min_w_0().h_5().flex_shrink_0()
-                                .child(single_line_text(format!("topic-directory-title-{id}"), title)))
-                            .child(label(format!("{count} goals{}{status}",
-                                if t.archived { " · Archived" } else { "" }), cx)))
-                        .on_click(cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx)))
-                }))
-                .map(observed))
+            .child(
+                row()
+                    .justify_between()
+                    .child(label(format!("TOPICS · {}", topics.len()), cx))
+                    .child(label("Scroll to browse · Click to open", cx)),
+            )
+            .child(
+                row()
+                    .id("topic-directory-scroll")
+                    .w_full()
+                    .min_w_0()
+                    .gap_2()
+                    .pb_2()
+                    .overflow_x_scroll()
+                    .restrict_scroll_to_axis()
+                    .children(topics.into_iter().map(|t| {
+                        let id = t.id;
+                        let title = t.display_name();
+                        let count = self
+                            .store
+                            .tasks()
+                            .iter()
+                            .filter(|task| {
+                                task.parent_id.is_none()
+                                    && self
+                                        .store
+                                        .task_topic(task.id)
+                                        .is_some_and(|topic| topic.id == id)
+                            })
+                            .count();
+                        let status = self
+                            .store
+                            .topic_planning_status(id)
+                            .map(|s| format!(" · {s}"))
+                            .unwrap_or_default();
+                        button(format!("topic-link-{id}"), "")
+                            .w(px(260.))
+                            .h(px(64.))
+                            .rounded(px(crate::appearance::GROUP_RADIUS))
+                            .flex_shrink_0()
+                            .border_1()
+                            .border_color(rgb(colors.line))
+                            .bg(rgb(colors.panel))
+                            .tooltip(crate::i18n::tr(title.clone()))
+                            .accessibility_label(crate::i18n::tr(title.clone()))
+                            .child(
+                                col()
+                                    .w_full()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .child(row().w_full().min_w_0().h_5().flex_shrink_0().child(
+                                        single_line_text(
+                                            format!("topic-directory-title-{id}"),
+                                            title,
+                                        ),
+                                    ))
+                                    .child(label(
+                                        format!(
+                                            "{count} goals{}{status}",
+                                            if t.archived { " · Archived" } else { "" }
+                                        ),
+                                        cx,
+                                    )),
+                            )
+                            .on_click(
+                                cx.listener(move |a, _, w, cx| a.navigate(Scope::Topic(id), w, cx)),
+                            )
+                    }))
+                    .map(observed),
+            )
             .into_any_element()
     }
 
     pub(crate) fn topic_view(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
         let Some(topic) = self.store.topics().iter().find(|t| t.id == id) else {
-            return div().child(selectable("Topic not found")).into_any_element();
+            return div()
+                .child(selectable("Topic not found"))
+                .into_any_element();
         };
         let project = topic.project_id;
         let archived = topic.archived;
@@ -553,7 +832,8 @@ impl TaskApp {
             let goal_id = goal.id;
             let archived_goal = self.store.task_is_archived(goal_id);
             let children = self.store.research_children(goal_id);
-            let history = archived_goal.then(|| crate::archive_presentation::goal_history(&self.store, goal_id));
+            let history = archived_goal
+                .then(|| crate::archive_presentation::goal_history(&self.store, goal_id));
             let complete = history
                 .as_ref()
                 .map(|history| history.completed_steps)
@@ -645,18 +925,18 @@ impl TaskApp {
                                 ),
                         )
                     })
-                    .when(!archived_goal && self.store.goal_tasks_complete(goal_id), |d| {
-                        d.child(quiet_button(format!("topic-export-{goal_id}"), "Export")
-                            .h_8().px_2()
-                            .disabled(self.goal_busy(goal_id))
-                            .tooltip(crate::i18n::tr("Save completed evidence, analysis and reports as a ZIP"))
-                            .on_click(cx.listener(move |a, _, _, cx| a.export_research_goal(goal_id, cx))))
-                    }),
             );
         }
-        let can_queue = !archived && self.store.todo_batch_items(project).iter().any(|goal|
-            self.store.task_topic(*goal).is_some_and(|topic| topic.id == id)
-                && self.todo_batch.as_ref().is_none_or(|batch| !batch.contains_pending(*goal)));
+        let can_queue = !archived
+            && self.store.todo_batch_items(project).iter().any(|goal| {
+                self.store
+                    .task_topic(*goal)
+                    .is_some_and(|topic| topic.id == id)
+                    && self
+                        .todo_batch
+                        .as_ref()
+                        .is_none_or(|batch| !batch.contains_pending(*goal))
+            });
         let planning_status = self.store.topic_planning_status(id);
         let planning_only = goals.is_empty() && planning_status.is_some();
         let entity = cx.entity().downgrade();
@@ -668,9 +948,6 @@ impl TaskApp {
                     .on_click(cx.listener(move |a, _, _, cx| a.start_topic_batch(id, cx)))))
                 .child(self.topic_plan_action(id, cx))
                 .child(self.topic_publish_button(id, cx))
-                .child(primary_button("topic-new-goal", "New research").disabled(archived).on_click(cx.listener(move |a, _, w, cx| {
-                    a.open_topic_creation(id, w, cx);
-                })))
                 .child(tool_icon("topic-actions-menu", assets::IconName::Ellipsis, "More topic actions")
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                         let moving = entity.clone();
@@ -705,9 +982,12 @@ impl TaskApp {
                         })))
                     })))
             .child(row().px_6().pb_2().gap_3()
-                .child(div().flex_1().min_w_0().child(label(format!("{} research goal{}{}", goals.len(), if goals.len() == 1 { "" } else { "s" }, if archived { " · Archived topic. Existing goals and results remain available." } else { "" }), cx)
-                    .id("topic-goal-count")
-                    .tooltip(|w, cx| component::tooltip::Tooltip::new("Open a goal to explore its steps and materials.").build(w, cx)))))
+                .child(div().flex_1().min_w_0().child(label(if archived {
+                    format!("{} research goals · Archived topic. Existing goals and results remain available.", goals.len())
+                } else {
+                    format!("{} research goals", goals.len())
+                }, cx)
+                    .id("topic-goal-count"))))
             .when_some(topic.replanned_from, |d, source| d.child(row().px_6().pb_2()
                 .child(link_button("replan-source", self.store.topics().iter().find(|t| t.id == source)
                     .map(|t| format!("From {} · Open original topic", t.display_name()))
@@ -726,7 +1006,7 @@ impl TaskApp {
             ))
             .child(self.todo_batch_bar(Some(project), cx))
             .when(!planning_only, |d| d.child(col().id("topic-goals").track_scroll(&self.navigation.topic_scroll).px_6().pt_3().pb_5().overflow_y_scroll().flex_1().min_h_0()
-                .when(goals.is_empty(), |d| d.child(muted("No research goals yet. Create one here or assign an existing goal using its Topic property.", cx)))
+                .when(goals.is_empty(), |d| d.child(muted("No research goals yet. New research is available at the project level.", cx)))
                 .child(list)))
             .into_any_element()
     }

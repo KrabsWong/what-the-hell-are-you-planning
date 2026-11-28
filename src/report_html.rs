@@ -60,8 +60,8 @@ impl ReportLabels {
             on_this_page: "On this page".into(),
             report_contents: "Report contents".into(),
             research_report: "RESEARCH REPORT".into(),
-            diagram_fallback:
-                "Diagram preview unavailable. Mermaid source is preserved below.".into(),
+            diagram_fallback: "Diagram preview unavailable. Mermaid source is preserved below."
+                .into(),
             diagram_alt: "Research report diagram".into(),
             view_mermaid_source: "View Mermaid source".into(),
             evidence_limitations: "Evidence limitations".into(),
@@ -129,8 +129,12 @@ fn render_diagrams(html: &str, labels: &ReportLabels) -> String {
             return output;
         };
         let end = source_start + end;
-        let source = rest[source_start..end].replace("&lt;", "<").replace("&gt;", ">")
-            .replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
+        let source = rest[source_start..end]
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&amp;", "&");
         match diagram_images(&source, labels) {
             Ok(images) => output.push_str(&images),
             Err(_) => {
@@ -155,9 +159,13 @@ fn diagram_images(source: &str, labels: &ReportLabels) -> Result<String, String>
     let (light, dark) = crate::diagram_renderer::render_pair(source)?;
     let mut images = String::from("<figure class=\"report-diagram\">");
     for (name, svg) in [("light", light), ("dark", dark)] {
-        let tree = usvg::Tree::from_str(&svg, &usvg::Options::default()).map_err(|e| e.to_string())?;
+        let tree =
+            usvg::Tree::from_str(&svg, &usvg::Options::default()).map_err(|e| e.to_string())?;
         let size = tree.size();
-        if size.width() > 8192. || size.height() > 8192. || size.width() * size.height() > 16_000_000. {
+        if size.width() > 8192.
+            || size.height() > 8192.
+            || size.width() * size.height() > 16_000_000.
+        {
             return Err("Diagram exceeds image limits".into());
         }
         // SVGs are isolated image documents, not active inline HTML. Encode every byte.
@@ -204,12 +212,19 @@ fn normalize_headings(title: &str, html: &str, labels: &ReportLabels) -> String 
         .min_by_key(|(p, _)| *p)
     {
         let end_tag = format!("</h{level}>");
-        let Some(length) = rest[start + 4..].find(&end_tag) else { break; };
+        let Some(length) = rest[start + 4..].find(&end_tag) else {
+            break;
+        };
         let end = start + 4 + length;
         let content = &rest[start + 4..end];
         let between = &rest[..start];
-        let is_title_repeat = level == 1 && heading_text(content).trim() == previous.trim()
-            && between.replace(&gap_note, "").replace("<hr />", "").trim().is_empty();
+        let is_title_repeat = level == 1
+            && heading_text(content).trim() == previous.trim()
+            && between
+                .replace(&gap_note, "")
+                .replace("<hr />", "")
+                .trim()
+                .is_empty();
         result.push_str(between);
         if !is_title_repeat {
             let output_level = level.max(2);
@@ -396,21 +411,39 @@ mod tests {
 
     #[test]
     fn mermaid_exports_isolated_theme_images_and_preserves_source() {
-        let page = render("Diagram", "```mermaid\nflowchart LR\n A[客户] --> B[律师]\n```\n\n```rust\nlet a = 1;\n```");
+        let page = render(
+            "Diagram",
+            "```mermaid\nflowchart LR\n A[客户] --> B[律师]\n```\n\n```rust\nlet a = 1;\n```",
+        );
         assert_eq!(page.matches("src=\"data:image/svg+xml,").count(), 2);
         assert!(page.contains("View Mermaid source"));
         assert!(page.contains("A[客户] --&gt; B[律师]"));
         assert!(page.contains("language-rust"));
-        assert!(!page.split("<figure class=\"report-diagram\">").nth(1).unwrap().split("</figure>").next().unwrap().contains("<svg"));
+        assert!(
+            !page
+                .split("<figure class=\"report-diagram\">")
+                .nth(1)
+                .unwrap()
+                .split("</figure>")
+                .next()
+                .unwrap()
+                .contains("<svg")
+        );
         assert!(!page.contains("diagram-fallback\""));
-        let unsafe_page = render("Unsafe", "```mermaid\nflowchart LR\n A[\"<script>alert(1)</script>\"] --> B[ok]\n```\n\n![injected](data:image/svg+xml,evil)");
+        let unsafe_page = render(
+            "Unsafe",
+            "```mermaid\nflowchart LR\n A[\"<script>alert(1)</script>\"] --> B[ok]\n```\n\n![injected](data:image/svg+xml,evil)",
+        );
         assert!(!unsafe_page.contains("<script>alert(1)"));
         assert!(!unsafe_page.contains("src=\"data:image/svg+xml,evil"));
     }
 
     #[test]
     fn invalid_and_oversized_diagrams_keep_readable_code() {
-        for source in ["not a diagram".to_string(), format!("flowchart LR\n A[{}]", "x".repeat(16_385))] {
+        for source in [
+            "not a diagram".to_string(),
+            format!("flowchart LR\n A[{}]", "x".repeat(16_385)),
+        ] {
             let page = render("Fallback", &format!("```mermaid\n{source}\n```"));
             assert!(page.contains("Diagram preview unavailable"));
             assert!(page.contains("language-mermaid"));
@@ -431,13 +464,19 @@ mod tests {
         assert!(!page.contains(crate::research::EVIDENCE_GAP_NOTE));
         assert!(page.contains("不能确认付费需求"));
         // Both desktop and mobile TOCs link to the same unique heading.
-        assert_eq!(page.matches("href=\"#section-1\">法律 AI 研究</a>").count(), 2);
+        assert_eq!(
+            page.matches("href=\"#section-1\">法律 AI 研究</a>").count(),
+            2
+        );
         assert!(page.contains("id=\"section-2\">摘要</h2>"));
     }
 
     #[test]
     fn distinct_reports_and_repeated_real_sections_are_preserved() {
-        let page = render("Topic", "## Goal A\n\n# Goal A\n\n内容 A\n\n## Goal B\n\n# Goal B\n\n## 摘要\n\n内容 B\n\n# 摘要\n\n补充内容");
+        let page = render(
+            "Topic",
+            "## Goal A\n\n# Goal A\n\n内容 A\n\n## Goal B\n\n# Goal B\n\n## 摘要\n\n内容 B\n\n# 摘要\n\n补充内容",
+        );
         assert_eq!(page.matches("<h1 ").count(), 1);
         assert!(page.contains(">Goal A</h2>"));
         assert!(page.contains(">Goal B</h2>"));
@@ -490,8 +529,12 @@ mod tests {
             "## 结论\n\n正文先给答案。\n\n## 附录\n\n| 编号 | 证据 |\n| --- | --- |\n| 1 | 访谈记录 |\n\n### Sources\n\n- [A](https://example.com/a)\n- [B](https://example.com/b)",
         );
         let answer = page.find("正文先给答案。").unwrap();
-        let appendix = page.find("<details class=\"report-detail report-appendix\"").unwrap();
-        let sources = page.find("<details class=\"report-detail report-sources\"").unwrap();
+        let appendix = page
+            .find("<details class=\"report-detail report-appendix\"")
+            .unwrap();
+        let sources = page
+            .find("<details class=\"report-detail report-sources\"")
+            .unwrap();
         assert!(answer < appendix && appendix < sources);
         assert!(page.contains("<summary><span>附录</span></summary>"));
         assert!(page.contains("<summary><span>Sources · 2</span></summary>"));

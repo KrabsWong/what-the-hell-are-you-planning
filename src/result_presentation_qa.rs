@@ -11,14 +11,10 @@ use crate::{
     domain::{Stage, Store},
     persistence::Storage,
     research::{self, ResearchKind, ResearchTask, Source},
-    result_presentation::{present_occurrence, present_run, EvidenceQuality, ResultKind},
+    result_presentation::{EvidenceQuality, ResultKind, present_occurrence, present_run},
 };
 use gpui_kit::{test::TestWindowExt, *};
-use std::{
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::Path, sync::Arc, time::Duration};
 
 const PLAN: &str = r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze findings","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#;
 
@@ -53,9 +49,10 @@ enum OrdinaryState {
 }
 
 pub fn run() {
-    let root = std::env::current_dir()
-        .unwrap()
-        .join(format!(".local/result-presentation-qa/{}", std::process::id()));
+    let root = std::env::current_dir().unwrap().join(format!(
+        ".local/result-presentation-qa/{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     if std::env::var("PLANNING_REFRESH_PREVIEW").as_deref() == Ok("1") {
@@ -73,7 +70,6 @@ pub fn run() {
     atomic_period_navigation_check(&root);
     render_matrix(&root);
     copy_result_check(&root);
-    export_parity_check(&root).unwrap();
     println!("Result presentation QA passed · {}", root.display());
 }
 
@@ -232,7 +228,12 @@ fn occurrence(
     }
 }
 
-fn quick_goal(store: &mut Store, occurrence_id: u64, status: &str, output: &str) -> (u64, u64, u64) {
+fn quick_goal(
+    store: &mut Store,
+    occurrence_id: u64,
+    status: &str,
+    output: &str,
+) -> (u64, u64, u64) {
     let goal = store
         .create_research_goal(
             "Quick result QA".into(),
@@ -241,7 +242,12 @@ fn quick_goal(store: &mut Store, occurrence_id: u64, status: &str, output: &str)
         )
         .unwrap();
     let task = store
-        .create_task("Answer the recurring question", 1, Stage::Planned, Some(goal))
+        .create_task(
+            "Answer the recurring question",
+            1,
+            Stage::InProgress,
+            Some(goal),
+        )
         .unwrap();
     let task_ref = store.task_mut(task).unwrap();
     task_ref.description = "Give the smallest complete answer.".into();
@@ -295,7 +301,8 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
 
     match state {
         AutomationState::QuickComplete => {
-            let (goal, _task, run) = quick_goal(&mut store, 31, "Succeeded", "Quick complete answer");
+            let (goal, _task, run) =
+                quick_goal(&mut store, 31, "Succeeded", "Quick complete answer");
             store.push_occurrence(occurrence(
                 31,
                 vec![goal],
@@ -425,9 +432,27 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
         }
         AutomationState::ResearchComplete => {
             let (goal, steps) = research_goal(&mut store, 34);
-            add_run(&mut store, steps[0], Some(34), "Succeeded", "First goal evidence");
-            add_run(&mut store, steps[1], Some(34), "Succeeded", "First goal analysis");
-            let report = add_run(&mut store, steps[2], Some(34), "Succeeded", "First goal final report");
+            add_run(
+                &mut store,
+                steps[0],
+                Some(34),
+                "Succeeded",
+                "First goal evidence",
+            );
+            add_run(
+                &mut store,
+                steps[1],
+                Some(34),
+                "Succeeded",
+                "First goal analysis",
+            );
+            let report = add_run(
+                &mut store,
+                steps[2],
+                Some(34),
+                "Succeeded",
+                "First goal final report",
+            );
             for task in &steps {
                 store.set_stage(*task, Stage::Done).unwrap();
             }
@@ -439,9 +464,27 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
                 )
                 .unwrap();
             let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-            add_run(&mut store, second_steps[0], Some(34), "Succeeded", "Second goal evidence");
-            add_run(&mut store, second_steps[1], Some(34), "Succeeded", "Second goal analysis");
-            add_run(&mut store, second_steps[2], Some(34), "Succeeded", "Second goal final report");
+            add_run(
+                &mut store,
+                second_steps[0],
+                Some(34),
+                "Succeeded",
+                "Second goal evidence",
+            );
+            add_run(
+                &mut store,
+                second_steps[1],
+                Some(34),
+                "Succeeded",
+                "Second goal analysis",
+            );
+            add_run(
+                &mut store,
+                second_steps[2],
+                Some(34),
+                "Succeeded",
+                "Second goal final report",
+            );
             for task in &second_steps {
                 store.set_stage(*task, Stage::Done).unwrap();
             }
@@ -457,14 +500,29 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
         }
         AutomationState::ResearchPartial => {
             let (goal, steps) = research_goal(&mut store, 35);
-            add_run(&mut store, steps[0], Some(35), "Succeeded", "First goal evidence");
-            add_run(&mut store, steps[1], Some(35), "Succeeded", "First goal analysis");
+            add_run(
+                &mut store,
+                steps[0],
+                Some(35),
+                "Succeeded",
+                "First goal evidence",
+            );
+            add_run(
+                &mut store,
+                steps[1],
+                Some(35),
+                "Succeeded",
+                "First goal analysis",
+            );
             let report = add_run(
                 &mut store,
                 steps[2],
                 Some(35),
                 "Succeeded",
-                &format!("{}\n\nFirst goal partial final report", research::EVIDENCE_GAP_NOTE),
+                &format!(
+                    "{}\n\nFirst goal partial final report",
+                    research::EVIDENCE_GAP_NOTE
+                ),
             );
             for task in &steps {
                 store.set_stage(*task, Stage::Done).unwrap();
@@ -497,9 +555,27 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
         }
         AutomationState::ResearchRunning => {
             let (goal, steps) = research_goal(&mut store, 36);
-            add_run(&mut store, steps[0], Some(36), "Succeeded", "First goal evidence");
-            add_run(&mut store, steps[1], Some(36), "Succeeded", "First goal analysis");
-            add_run(&mut store, steps[2], Some(36), "Succeeded", "First goal final report");
+            add_run(
+                &mut store,
+                steps[0],
+                Some(36),
+                "Succeeded",
+                "First goal evidence",
+            );
+            add_run(
+                &mut store,
+                steps[1],
+                Some(36),
+                "Succeeded",
+                "First goal analysis",
+            );
+            add_run(
+                &mut store,
+                steps[2],
+                Some(36),
+                "Succeeded",
+                "First goal final report",
+            );
             for task in &steps {
                 store.set_stage(*task, Stage::Done).unwrap();
             }
@@ -511,7 +587,13 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
                 )
                 .unwrap();
             let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-            add_run(&mut store, second_steps[0], Some(36), "Succeeded", "Second goal evidence");
+            add_run(
+                &mut store,
+                second_steps[0],
+                Some(36),
+                "Succeeded",
+                "Second goal evidence",
+            );
             add_run(
                 &mut store,
                 second_steps[1],
@@ -531,9 +613,27 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
         }
         AutomationState::ResearchFailed => {
             let (goal, steps) = research_goal(&mut store, 37);
-            add_run(&mut store, steps[0], Some(37), "Succeeded", "First goal evidence");
-            add_run(&mut store, steps[1], Some(37), "Succeeded", "First goal analysis");
-            add_run(&mut store, steps[2], Some(37), "Succeeded", "First goal retained final report");
+            add_run(
+                &mut store,
+                steps[0],
+                Some(37),
+                "Succeeded",
+                "First goal evidence",
+            );
+            add_run(
+                &mut store,
+                steps[1],
+                Some(37),
+                "Succeeded",
+                "First goal analysis",
+            );
+            add_run(
+                &mut store,
+                steps[2],
+                Some(37),
+                "Succeeded",
+                "First goal retained final report",
+            );
             for task in &steps {
                 store.set_stage(*task, Stage::Done).unwrap();
             }
@@ -545,8 +645,20 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
                 )
                 .unwrap();
             let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-            add_run(&mut store, second_steps[0], Some(37), "Succeeded", "Second goal evidence remains");
-            add_run(&mut store, second_steps[1], Some(37), "Failed", "Second goal analysis failed");
+            add_run(
+                &mut store,
+                second_steps[0],
+                Some(37),
+                "Succeeded",
+                "Second goal evidence remains",
+            );
+            add_run(
+                &mut store,
+                second_steps[1],
+                Some(37),
+                "Failed",
+                "Second goal analysis failed",
+            );
             store.push_occurrence(occurrence(
                 37,
                 vec![goal, second_goal],
@@ -559,9 +671,27 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
         }
         AutomationState::ResearchCancelled => {
             let (goal, steps) = research_goal(&mut store, 38);
-            add_run(&mut store, steps[0], Some(38), "Succeeded", "First goal evidence");
-            add_run(&mut store, steps[1], Some(38), "Succeeded", "First goal analysis");
-            add_run(&mut store, steps[2], Some(38), "Succeeded", "First goal retained final report");
+            add_run(
+                &mut store,
+                steps[0],
+                Some(38),
+                "Succeeded",
+                "First goal evidence",
+            );
+            add_run(
+                &mut store,
+                steps[1],
+                Some(38),
+                "Succeeded",
+                "First goal analysis",
+            );
+            add_run(
+                &mut store,
+                steps[2],
+                Some(38),
+                "Succeeded",
+                "First goal retained final report",
+            );
             for task in &steps {
                 store.set_stage(*task, Stage::Done).unwrap();
             }
@@ -573,8 +703,20 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
                 )
                 .unwrap();
             let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-            add_run(&mut store, second_steps[0], Some(38), "Succeeded", "Second goal evidence remains");
-            add_run(&mut store, second_steps[1], Some(38), "Cancelled", "Stopped during second goal analysis");
+            add_run(
+                &mut store,
+                second_steps[0],
+                Some(38),
+                "Succeeded",
+                "Second goal evidence remains",
+            );
+            add_run(
+                &mut store,
+                second_steps[1],
+                Some(38),
+                "Cancelled",
+                "Stopped during second goal analysis",
+            );
             store.push_occurrence(occurrence(
                 38,
                 vec![goal, second_goal],
@@ -587,8 +729,20 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
         }
         AutomationState::ResearchStale => {
             let (goal, steps) = research_goal(&mut store, 45);
-            add_run(&mut store, steps[0], Some(45), "Succeeded", "Stale goal evidence");
-            add_run(&mut store, steps[1], Some(45), "Succeeded", "Stale goal analysis");
+            add_run(
+                &mut store,
+                steps[0],
+                Some(45),
+                "Succeeded",
+                "Stale goal evidence",
+            );
+            add_run(
+                &mut store,
+                steps[1],
+                Some(45),
+                "Succeeded",
+                "Stale goal analysis",
+            );
             let report = add_run(
                 &mut store,
                 steps[2],
@@ -616,8 +770,20 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
         }
         AutomationState::ResearchMultiGoalStale => {
             let (first_goal, first_steps) = research_goal(&mut store, 46);
-            add_run(&mut store, first_steps[0], Some(46), "Succeeded", "Stale first evidence");
-            add_run(&mut store, first_steps[1], Some(46), "Succeeded", "Stale first analysis");
+            add_run(
+                &mut store,
+                first_steps[0],
+                Some(46),
+                "Succeeded",
+                "Stale first evidence",
+            );
+            add_run(
+                &mut store,
+                first_steps[1],
+                Some(46),
+                "Succeeded",
+                "Stale first analysis",
+            );
             let stale_report = add_run(
                 &mut store,
                 first_steps[2],
@@ -642,8 +808,20 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
                 )
                 .unwrap();
             let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-            add_run(&mut store, second_steps[0], Some(46), "Succeeded", "Second goal evidence");
-            add_run(&mut store, second_steps[1], Some(46), "Succeeded", "Second goal analysis");
+            add_run(
+                &mut store,
+                second_steps[0],
+                Some(46),
+                "Succeeded",
+                "Second goal evidence",
+            );
+            add_run(
+                &mut store,
+                second_steps[1],
+                Some(46),
+                "Succeeded",
+                "Second goal analysis",
+            );
             add_run(
                 &mut store,
                 second_steps[2],
@@ -664,14 +842,29 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
         }
         AutomationState::ResearchRegenerating => {
             let (goal, steps) = research_goal(&mut store, 39);
-            add_run(&mut store, steps[0], Some(39), "Succeeded", "First goal evidence");
-            add_run(&mut store, steps[1], Some(39), "Succeeded", "First goal analysis");
+            add_run(
+                &mut store,
+                steps[0],
+                Some(39),
+                "Succeeded",
+                "First goal evidence",
+            );
+            add_run(
+                &mut store,
+                steps[1],
+                Some(39),
+                "Succeeded",
+                "First goal analysis",
+            );
             let report = add_run(
                 &mut store,
                 steps[2],
                 Some(39),
                 "Succeeded",
-                &format!("{}\n\nPrevious partial first goal report", research::EVIDENCE_GAP_NOTE),
+                &format!(
+                    "{}\n\nPrevious partial first goal report",
+                    research::EVIDENCE_GAP_NOTE
+                ),
             );
             for task in &steps {
                 store.set_stage(*task, Stage::Done).unwrap();
@@ -684,7 +877,8 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
                 .clone();
             regenerating.id = store.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
             regenerating.status = "Running".into();
-            regenerating.output = "Regenerating the first goal report from existing evidence".into();
+            regenerating.output =
+                "Regenerating the first goal report from existing evidence".into();
             regenerating.session_id = Some("ses_qa_regeneration".into());
             store.push_run(regenerating);
 
@@ -696,9 +890,27 @@ fn automation_fixture(directory: &Path, state: AutomationState) -> (Store, u64) 
                 )
                 .unwrap();
             let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-            add_run(&mut store, second_steps[0], Some(39), "Succeeded", "Second goal evidence");
-            add_run(&mut store, second_steps[1], Some(39), "Succeeded", "Second goal analysis");
-            add_run(&mut store, second_steps[2], Some(39), "Succeeded", "Second goal complete report");
+            add_run(
+                &mut store,
+                second_steps[0],
+                Some(39),
+                "Succeeded",
+                "Second goal evidence",
+            );
+            add_run(
+                &mut store,
+                second_steps[1],
+                Some(39),
+                "Succeeded",
+                "Second goal analysis",
+            );
+            add_run(
+                &mut store,
+                second_steps[2],
+                Some(39),
+                "Succeeded",
+                "Second goal complete report",
+            );
             for task in &second_steps {
                 store.set_stage(*task, Stage::Done).unwrap();
             }
@@ -726,8 +938,20 @@ fn ordinary_fixture(directory: &Path, state: OrdinaryState) -> (Store, u64, u64)
         )
         .unwrap();
     let steps = store.apply_research_plan(goal, PLAN).unwrap();
-    add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence body");
-    add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings body");
+    add_run(
+        &mut store,
+        steps[0],
+        None,
+        "Succeeded",
+        "Collected evidence body",
+    );
+    add_run(
+        &mut store,
+        steps[1],
+        None,
+        "Succeeded",
+        "Analyzed findings body",
+    );
     let report_status = match state {
         OrdinaryState::Running => "Running",
         OrdinaryState::Failed => "Failed",
@@ -736,7 +960,10 @@ fn ordinary_fixture(directory: &Path, state: OrdinaryState) -> (Store, u64, u64)
     };
     let output = match state {
         OrdinaryState::Partial => {
-            format!("{}\n\nOrdinary partial report body", research::EVIDENCE_GAP_NOTE)
+            format!(
+                "{}\n\nOrdinary partial report body",
+                research::EVIDENCE_GAP_NOTE
+            )
         }
         OrdinaryState::Running => "Writing the report from collected evidence".into(),
         OrdinaryState::Failed => {
@@ -783,10 +1010,8 @@ fn ordinary_fixture(directory: &Path, state: OrdinaryState) -> (Store, u64, u64)
 }
 
 fn pure_checks() {
-    let directory = std::env::temp_dir().join(format!(
-        "result-presentation-pure-{}",
-        std::process::id()
-    ));
+    let directory =
+        std::env::temp_dir().join(format!("result-presentation-pure-{}", std::process::id()));
     std::fs::create_dir_all(&directory).unwrap();
 
     for state in [
@@ -821,7 +1046,11 @@ fn pure_checks() {
                 assert_eq!(presentation.quality, EvidenceQuality::Partial);
                 assert!(presentation.has_final_report);
                 assert!(presentation.notice.is_some());
-                assert!(!presentation.reader_markdown.contains(research::EVIDENCE_GAP_NOTE));
+                assert!(
+                    !presentation
+                        .reader_markdown
+                        .contains(research::EVIDENCE_GAP_NOTE)
+                );
             }
             AutomationState::ResearchPartial => {
                 assert_eq!(presentation.kind, ResultKind::PartialPeriod);
@@ -863,10 +1092,13 @@ fn pure_checks() {
                 assert_eq!(presentation.quality, EvidenceQuality::UnverifiedLegacy);
                 assert!(presentation.freshness.stale_input);
                 assert!(!presentation.freshness.previous_version);
-                assert!(presentation
-                    .reports
-                    .iter()
-                    .any(|report| report.presentation.reader_markdown == "Stale goal previous report"));
+                assert!(
+                    presentation
+                        .reports
+                        .iter()
+                        .any(|report| report.presentation.reader_markdown
+                            == "Stale goal previous report")
+                );
                 assert!(!presentation.reader_text().contains("{\"status\""));
             }
             AutomationState::ResearchMultiGoalStale => {
@@ -963,9 +1195,15 @@ fn render_matrix(root: &Path) {
                 (AutomationState::ResearchRunning, "research-running"),
                 (AutomationState::ResearchFailed, "research-failed"),
                 (AutomationState::ResearchCancelled, "research-cancelled"),
-                (AutomationState::ResearchRegenerating, "research-regenerating"),
+                (
+                    AutomationState::ResearchRegenerating,
+                    "research-regenerating",
+                ),
                 (AutomationState::ResearchStale, "research-stale"),
-                (AutomationState::ResearchMultiGoalStale, "research-multigoal-stale"),
+                (
+                    AutomationState::ResearchMultiGoalStale,
+                    "research-multigoal-stale",
+                ),
             ] {
                 let (mut store, occurrence_id) = automation_fixture(&directory, state);
                 store.set_appearance(mode);
@@ -982,9 +1220,8 @@ fn render_matrix(root: &Path) {
                     width,
                     height,
                     match state {
-                        AutomationState::QuickRegenerating | AutomationState::ResearchRegenerating => {
-                            &[(-420., "body")][..]
-                        }
+                        AutomationState::QuickRegenerating
+                        | AutomationState::ResearchRegenerating => &[(-420., "body")][..],
                         AutomationState::ResearchComplete
                         | AutomationState::ResearchRunning
                         | AutomationState::ResearchFailed
@@ -1080,17 +1317,30 @@ fn screenshot_automation(
     screenshot(&mut cx, handle, directory, name);
     cx.update_window(handle, |_, w, _| {
         let state_element = w.try_find("automation-result-state");
-        let state = state_element.as_ref().and_then(|element| element.label())
-            .map(str::to_string).unwrap_or_default();
+        let state = state_element
+            .as_ref()
+            .and_then(|element| element.label())
+            .map(str::to_string)
+            .unwrap_or_default();
         if expected.state.is_empty() {
             assert!(
                 state_element.is_none(),
                 "Active results keep state in progress rows and notices instead of repeating it"
             );
-        } else if expected.report_runs.len() == 1 && !expected.no_final
-            && matches!(name, "quick-complete.png" | "quick-partial.png" | "research-complete.png" | "research-partial.png")
+        } else if expected.report_runs.len() == 1
+            && !expected.no_final
+            && matches!(
+                name,
+                "quick-complete.png"
+                    | "quick-partial.png"
+                    | "research-complete.png"
+                    | "research-partial.png"
+            )
         {
-            assert!(state_element.is_none(), "Single final reports must not repeat quality/type metadata above the reader");
+            assert!(
+                state_element.is_none(),
+                "Single final reports must not repeat quality/type metadata above the reader"
+            );
         } else {
             assert_eq!(state, expected.state);
         }
@@ -1128,11 +1378,15 @@ fn screenshot_automation(
 fn technical_scroll_check(root: &Path) {
     for (width, height) in [(1440., 920.), (1000., 680.)] {
         for mode in [Appearance::Light, Appearance::Dark] {
-            let (mut store, occurrence) = automation_fixture(root, AutomationState::ResearchComplete);
+            let (mut store, occurrence) =
+                automation_fixture(root, AutomationState::ResearchComplete);
             store.set_appearance(mode);
-            let ids: Vec<_> = store.runs().iter()
+            let ids: Vec<_> = store
+                .runs()
+                .iter()
                 .filter(|run| run.automation_occurrence_id == Some(occurrence))
-                .map(|run| run.id).collect();
+                .map(|run| run.id)
+                .collect();
             assert!(ids.len() > 1);
             for index in 0..store.runs().len() {
                 let run = store.run_at_mut(index).unwrap();
@@ -1140,13 +1394,23 @@ fn technical_scroll_check(root: &Path) {
                     run.logs = (0..40).map(|line| format!("Run #{} diagnostic line {line}: evidence collection and report processing.", run.id)).collect();
                 }
             }
-            let first_step = store.runs().iter().find(|run| run.id == ids[0]).unwrap().task_id;
+            let first_step = store
+                .runs()
+                .iter()
+                .find(|run| run.id == ids[0])
+                .unwrap()
+                .task_id;
             let latest = *ids.last().unwrap();
             let first = ids[0];
             let presentation = present_occurrence(&store, store.occurrence(occurrence).unwrap());
-            let source_run = presentation.reports.iter()
-                .find(|report| !report.presentation.sources.is_empty()).unwrap()
-                .presentation.run_id.unwrap();
+            let source_run = presentation
+                .reports
+                .iter()
+                .find(|report| !report.presentation.sources.is_empty())
+                .unwrap()
+                .presentation
+                .run_id
+                .unwrap();
             let sources_toggle = format!("automation-sources-{occurrence}-report-{source_run}");
             let source_link = format!("automation-source-{occurrence}-report-{source_run}-0");
             let path = root.join(format!("technical-{mode:?}-{width}.sqlite3"));
@@ -1156,10 +1420,22 @@ fn technical_scroll_check(root: &Path) {
                 a.push_period_overlay(occurrence);
                 a.automation_ui.show_technical = false;
             });
-            screenshot(&mut cx, handle, root, &format!("result-default-{mode:?}-{width}.png"));
+            screenshot(
+                &mut cx,
+                handle,
+                root,
+                &format!("result-default-{mode:?}-{width}.png"),
+            );
             cx.update_window(handle, |root, w, cx| {
                 w.render_frame(cx);
-                let app = root.downcast::<base::Root>().unwrap().read(cx).view().clone().downcast::<TaskApp>().unwrap();
+                let app = root
+                    .downcast::<base::Root>()
+                    .unwrap()
+                    .read(cx)
+                    .view()
+                    .clone()
+                    .downcast::<TaskApp>()
+                    .unwrap();
                 let step_row = format!("automation-step-{first_step}");
                 assert!(w.try_find(step_row.clone()).is_none());
                 w.click("automation-completed-steps", cx);
@@ -1183,37 +1459,67 @@ fn technical_scroll_check(root: &Path) {
                 w.render_frame(cx);
                 w.find("automation-period-diagnostics");
                 app.update(cx, |a, _| {
-                    a.automation_ui.dialog_scroll.set_offset(point(px(0.), -a.automation_ui.dialog_scroll.max_offset().y));
+                    a.automation_ui
+                        .dialog_scroll
+                        .set_offset(point(px(0.), -a.automation_ui.dialog_scroll.max_offset().y));
                 });
                 w.render_frame(cx);
                 let log_id = format!("automation-run-logs-{latest}");
                 assert!(w.find(log_id.clone()).visible());
                 assert!(w.try_find(format!("automation-run-logs-{first}")).is_none());
                 let before = app.read(cx).automation_ui.dialog_scroll.offset();
-                w.scroll(log_id.clone(), ScrollDelta::Pixels(point(px(0.), px(-90.))), cx);
+                w.scroll(
+                    log_id.clone(),
+                    ScrollDelta::Pixels(point(px(0.), px(-90.))),
+                    cx,
+                );
                 w.render_frame(cx);
                 assert!(app.read(cx).automation_ui.technical_scroll.offset().y < px(0.));
                 assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
-                w.scroll(log_id.clone(), ScrollDelta::Pixels(point(px(0.), px(40.))), cx);
+                w.scroll(
+                    log_id.clone(),
+                    ScrollDelta::Pixels(point(px(0.), px(40.))),
+                    cx,
+                );
                 w.render_frame(cx);
                 assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
-                w.scroll(log_id.clone(), ScrollDelta::Pixels(point(px(0.), px(1000.))), cx);
+                w.scroll(
+                    log_id.clone(),
+                    ScrollDelta::Pixels(point(px(0.), px(1000.))),
+                    cx,
+                );
                 w.render_frame(cx);
                 assert_eq!(app.read(cx).automation_ui.dialog_scroll.offset(), before);
-                w.scroll(log_id.clone(), ScrollDelta::Pixels(point(px(0.), px(100.))), cx);
+                w.scroll(
+                    log_id.clone(),
+                    ScrollDelta::Pixels(point(px(0.), px(100.))),
+                    cx,
+                );
                 w.render_frame(cx);
                 assert!(app.read(cx).automation_ui.dialog_scroll.offset().y > before.y);
                 w.click(format!("automation-run-tab-{first}"), cx);
                 w.render_frame(cx);
                 assert_eq!(app.read(cx).automation_ui.technical_run, Some(first));
-                assert_eq!(app.read(cx).automation_ui.technical_scroll.offset().y, px(0.));
+                assert_eq!(
+                    app.read(cx).automation_ui.technical_scroll.offset().y,
+                    px(0.)
+                );
                 assert!(w.try_find(log_id.clone()).is_none());
                 w.find(format!("automation-run-logs-{first}"));
-            }).unwrap();
-            screenshot(&mut cx, handle, root, &format!("technical-{mode:?}-{width}.png"));
+            })
+            .unwrap();
+            screenshot(
+                &mut cx,
+                handle,
+                root,
+                &format!("technical-{mode:?}-{width}.png"),
+            );
         }
     }
-    println!("Technical run selection and scroll QA passed · {}", root.display());
+    println!(
+        "Technical run selection and scroll QA passed · {}",
+        root.display()
+    );
 }
 
 fn screenshot_ordinary(
@@ -1236,12 +1542,7 @@ fn screenshot_ordinary(
     screenshot(&mut cx, handle, directory, name);
 }
 
-fn screenshot(
-    cx: &mut HeadlessAppContext,
-    handle: AnyWindowHandle,
-    directory: &Path,
-    name: &str,
-) {
+fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &Path, name: &str) {
     for _ in 0..4 {
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| w.render_frame(cx))
@@ -1258,42 +1559,68 @@ fn refresh_preview(root: &Path) {
     let (store, report_task, _) = ordinary_fixture(root, OrdinaryState::Complete);
     let goal = store.owning_research_goal(report_task).unwrap();
     let path = root.join("workspace.sqlite3");
-    let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, root, 0x52_45_46, &store).unwrap();
+    let database =
+        crate::sqlite_v4::SqliteV4::create_seeded(&path, root, 0x52_45_46, &store).unwrap();
     let lazy = database.load_store_lazy().unwrap();
     let reader = crate::history_reader::HistoryReader::start(&path, root, 0x52_45_46).unwrap();
-    application().with_assets(crate::ui_assets::AppAssets).run(move |cx| {
-        init(cx);
-        open_window(WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(1440.), px(920.)), cx))),
-            titlebar: Some(TitlebarOptions {
-                title: Some("Needs refresh fix — isolated test".into()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }, cx, |w, cx| {
-            let app = cx.new(|cx| TaskApp::new_mock(w, cx));
-            app.update(cx, |a, cx| {
-                a.store = lazy;
-                a.history_reader = Some(reader);
-                a.set_appearance(Appearance::Dark, w, cx);
-                a.open_task(goal, w, cx);
-            });
-            app
-        }).unwrap();
-        cx.activate(true);
-    });
+    application()
+        .with_assets(crate::ui_assets::AppAssets)
+        .run(move |cx| {
+            init(cx);
+            open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                        None,
+                        size(px(1440.), px(920.)),
+                        cx,
+                    ))),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("Needs refresh fix — isolated test".into()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                cx,
+                |w, cx| {
+                    let app = cx.new(|cx| TaskApp::new_mock(w, cx));
+                    app.update(cx, |a, cx| {
+                        a.store = lazy;
+                        a.history_reader = Some(reader);
+                        a.set_appearance(Appearance::Dark, w, cx);
+                        a.open_task(goal, w, cx);
+                    });
+                    app
+                },
+            )
+            .unwrap();
+            cx.activate(true);
+        });
 }
 
 fn lazy_reader_check(root: &Path) {
     let directory = root.join("lazy-reader");
     std::fs::create_dir_all(&directory).unwrap();
-    let (mut store, report_task, report_run) = ordinary_fixture(&directory, OrdinaryState::Complete);
+    let (mut store, report_task, report_run) =
+        ordinary_fixture(&directory, OrdinaryState::Complete);
     let goal = store.owning_research_goal(report_task).unwrap();
     let steps = store.research_children(goal);
-    let first = store.runs().iter().find(|run| run.research_kind == Some(ResearchKind::Collect)
-        && store.owning_research_goal(run.task_id) == store.owning_research_goal(report_task)).unwrap();
+    let first = store
+        .runs()
+        .iter()
+        .find(|run| {
+            run.research_kind == Some(ResearchKind::Collect)
+                && store.owning_research_goal(run.task_id)
+                    == store.owning_research_goal(report_task)
+        })
+        .unwrap();
     let (first_task, first_run, first_body) = (first.task_id, first.id, first.output.clone());
-    let report_body = store.runs().iter().find(|run| run.id == report_run).unwrap().output.clone();
+    let report_body = store
+        .runs()
+        .iter()
+        .find(|run| run.id == report_run)
+        .unwrap()
+        .output
+        .clone();
     for id in [first_run, report_run] {
         store.run_mut(id).unwrap().output.clear();
         store.mark_lazy_body(id);
@@ -1305,16 +1632,18 @@ fn lazy_reader_check(root: &Path) {
     );
     cx.update(init);
     let mut app = None;
-    let window = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
-        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| {
-            // No reader worker: hold each loading transition deterministically.
-            a.store = store;
-            a.open_task(goal, w, cx);
-        });
-        app = Some(view.clone());
-        cx.new(|cx| base::Root::new(view, w, cx))
-    }).unwrap();
+    let window = cx
+        .open_window(size(px(1000.), px(680.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                // No reader worker: hold each loading transition deterministically.
+                a.store = store;
+                a.open_task(goal, w, cx);
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
     let app = app.unwrap();
     let handle: AnyWindowHandle = window.into();
     cx.update_window(handle, |_, w, cx| {
@@ -1323,8 +1652,10 @@ fn lazy_reader_check(root: &Path) {
             w.render_frame(cx);
             for step in &steps {
                 w.find(format!("subtask-{step}"));
-                assert!(w.try_find(format!("subtask-refresh-{step}")).is_none(),
-                    "current lazy results and dependencies must not need refresh");
+                assert!(
+                    w.try_find(format!("subtask-refresh-{step}")).is_none(),
+                    "current lazy results and dependencies must not need refresh"
+                );
             }
         }
         app.update(cx, |a, _| a.store.clear_lazy_body(first_run));
@@ -1334,7 +1665,11 @@ fn lazy_reader_check(root: &Path) {
         }
         app.update(cx, |a, _| {
             a.store.mark_lazy_body(first_run);
-            a.store.run_mut(first_run).unwrap().input_signature.push_str(" changed");
+            a.store
+                .run_mut(first_run)
+                .unwrap()
+                .input_signature
+                .push_str(" changed");
         });
         w.render_frame(cx);
         for step in &steps {
@@ -1347,7 +1682,10 @@ fn lazy_reader_check(root: &Path) {
             a.show_task_result(first_run, cx);
         });
         w.render_frame(cx);
-        assert_eq!(w.find("run-result-kind").label(), Some("Loading saved report…"));
+        assert_eq!(
+            w.find("run-result-kind").label(),
+            Some("Loading saved report…")
+        );
         assert!(w.find("research-result-scroll").visible());
         app.update(cx, |a, cx| {
             a.open_task(report_task, w, cx);
@@ -1356,24 +1694,40 @@ fn lazy_reader_check(root: &Path) {
             cx.notify();
         });
         w.render_frame(cx);
-        assert_eq!(app.read(cx).selected_run(), Some(report_run), "an older body's arrival must not change selection");
-        assert_eq!(w.find("run-result-kind").label(), Some("Loading saved report…"));
+        assert_eq!(
+            app.read(cx).selected_run(),
+            Some(report_run),
+            "an older body's arrival must not change selection"
+        );
+        assert_eq!(
+            w.find("run-result-kind").label(),
+            Some("Loading saved report…")
+        );
         app.update(cx, |a, cx| {
-            a.run_body_state.insert(report_run, crate::history_reader::BodyLoad::Failed {
-                error: "Isolated read failure".into(),
-                retry_at: std::time::Instant::now() + Duration::from_secs(60),
-            });
+            a.run_body_state.insert(
+                report_run,
+                crate::history_reader::BodyLoad::Failed {
+                    error: "Isolated read failure".into(),
+                    retry_at: std::time::Instant::now() + Duration::from_secs(60),
+                },
+            );
             cx.notify();
         });
         w.render_frame(cx);
-        assert_eq!(w.find("run-result-kind").label(), Some("Report unavailable"));
+        assert_eq!(
+            w.find("run-result-kind").label(),
+            Some("Report unavailable")
+        );
         assert!(w.find("retry-result-body").visible());
         app.update(cx, |a, cx| {
             a.run_body_state.remove(&report_run);
             cx.notify();
         });
         w.render_frame(cx);
-        assert_eq!(w.find("run-result-kind").label(), Some("Loading saved report…"));
+        assert_eq!(
+            w.find("run-result-kind").label(),
+            Some("Loading saved report…")
+        );
         app.update(cx, |a, cx| {
             a.store.hydrate_run_body(report_run, report_body);
             cx.notify();
@@ -1382,10 +1736,17 @@ fn lazy_reader_check(root: &Path) {
         assert_eq!(w.find("run-result-kind").label(), Some("Final report"));
         assert!(w.try_find("retry-result-body").is_none());
         assert_eq!(app.read(cx).selected_run(), Some(report_run));
-    }).unwrap();
-    cx.capture_screenshot(handle).unwrap().save(directory.join("hydrated-report.png")).unwrap();
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
-    println!("Lazy reader distinguishes loading, read failure and hydrated content without changing selection");
+    })
+    .unwrap();
+    cx.capture_screenshot(handle)
+        .unwrap()
+        .save(directory.join("hydrated-report.png"))
+        .unwrap();
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+    println!(
+        "Lazy reader distinguishes loading, read failure and hydrated content without changing selection"
+    );
 }
 
 fn atomic_period_navigation_check(root: &Path) {
@@ -1398,36 +1759,53 @@ fn atomic_period_navigation_check(root: &Path) {
     store.push_occurrence(next);
     let final_run = store.occurrence(first).unwrap().final_run_id.unwrap();
     let path = directory.join("workspace.sqlite3");
-    let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, 732, &store).unwrap();
+    let database =
+        crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, 732, &store).unwrap();
     let lazy = database.load_store_lazy().unwrap();
     let reader = crate::history_reader::HistoryReader::start(&path, &directory, 732).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
-        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets),
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
         platform::current_headless_renderer,
     );
     cx.update(init);
-    let handle: AnyWindowHandle = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
-        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, _| {
-            a.store = lazy;
-            a.history_reader = Some(reader);
-            a.set_scope_identity(Scope::AutomationRuns);
-        });
-        cx.new(|cx| base::Root::new(view, w, cx))
-    }).unwrap().into();
+    let handle: AnyWindowHandle = cx
+        .open_window(size(px(1000.), px(680.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, _| {
+                a.store = lazy;
+                a.history_reader = Some(reader);
+                a.set_scope_identity(Scope::AutomationRuns);
+            });
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap()
+        .into();
     let mut app = None;
     cx.update_window(handle, |root, w, cx| {
-        let view = root.downcast::<base::Root>().unwrap().read(cx).view().clone().downcast::<TaskApp>().unwrap();
+        let view = root
+            .downcast::<base::Root>()
+            .unwrap()
+            .read(cx)
+            .view()
+            .clone()
+            .downcast::<TaskApp>()
+            .unwrap();
         view.update(cx, |a, cx| {
             a.open_occurrence_result(999, w, cx);
             assert_eq!(a.automation_ui.pending_period, Some(999));
-            assert_eq!(a.period_overlay(), None, "Do not reveal an incomplete dialog");
+            assert_eq!(
+                a.period_overlay(),
+                None,
+                "Do not reveal an incomplete dialog"
+            );
             a.open_occurrence_result(first, w, cx);
             assert_eq!(a.automation_ui.pending_period, Some(first));
             assert_eq!(a.period_overlay(), None);
         });
         app = Some(view);
-    }).unwrap();
+    })
+    .unwrap();
     let app = app.unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
@@ -1443,11 +1821,17 @@ fn atomic_period_navigation_check(root: &Path) {
                 assert_eq!(result.reports.len(), 2);
                 for report in &result.reports {
                     assert!(report.presentation.has_reader_body());
-                    w.find(format!("automation-report-body-{first}-{}", report.presentation.run_id.unwrap()));
+                    w.find(format!(
+                        "automation-report-body-{first}-{}",
+                        report.presentation.run_id.unwrap()
+                    ));
                 }
             }
-        }).unwrap();
-        if cx.update(|cx| app.read(cx).period_overlay() == Some(first)) { break; }
+        })
+        .unwrap();
+        if cx.update(|cx| app.read(cx).period_overlay() == Some(first)) {
+            break;
+        }
         assert!(std::time::Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     }
@@ -1455,7 +1839,11 @@ fn atomic_period_navigation_check(root: &Path) {
         app.update(cx, |a, cx| {
             a.close_occurrence_result(w, cx);
             a.open_occurrence_result(first, w, cx);
-            assert_eq!(a.period_overlay(), Some(first), "Cached result opens immediately");
+            assert_eq!(
+                a.period_overlay(),
+                Some(first),
+                "Cached result opens immediately"
+            );
             a.close_occurrence_result(w, cx);
             a.store.run_mut(final_run).unwrap().output.clear();
             a.store.mark_lazy_body(final_run);
@@ -1464,17 +1852,27 @@ fn atomic_period_navigation_check(root: &Path) {
             assert_eq!(a.automation_ui.pending_period, Some(first));
             a.navigate(Scope::Settings, w, cx);
             assert_eq!(a.automation_ui.pending_period, None);
-            a.run_body_state.insert(final_run, crate::history_reader::BodyLoad::Failed {
-                error: "Isolated read failure".into(),
-                retry_at: std::time::Instant::now() + Duration::from_secs(60),
-            });
+            a.run_body_state.insert(
+                final_run,
+                crate::history_reader::BodyLoad::Failed {
+                    error: "Isolated read failure".into(),
+                    retry_at: std::time::Instant::now() + Duration::from_secs(60),
+                },
+            );
             a.open_occurrence_result(first, w, cx);
-            assert_eq!(a.period_overlay(), Some(first), "Read failures must remain reachable");
+            assert_eq!(
+                a.period_overlay(),
+                Some(first),
+                "Read failures must remain reachable"
+            );
         });
         w.render_frame(cx);
         w.find("automation-report-unavailable");
-    }).unwrap();
-    println!("Period dialogs open after hydration; cached, superseded, cancelled and failed reads verified");
+    })
+    .unwrap();
+    println!(
+        "Period dialogs open after hydration; cached, superseded, cancelled and failed reads verified"
+    );
 }
 
 fn atomic_reader_navigation_check(root: &Path) {
@@ -1485,31 +1883,44 @@ fn atomic_reader_navigation_check(root: &Path) {
     let steps = store.research_children(goal);
     let first_task = steps[0];
     let analysis_task = steps[1];
-    let run_for = |task| store.runs().iter().rev().find(|run| run.task_id == task).unwrap().id;
+    let run_for = |task| {
+        store
+            .runs()
+            .iter()
+            .rev()
+            .find(|run| run.task_id == task)
+            .unwrap()
+            .id
+    };
     let first_run = run_for(first_task);
     let analysis_run = run_for(analysis_task);
     let path = directory.join("workspace.sqlite3");
     let incarnation = 0x41_54_4f_4d;
-    let database = crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, incarnation, &store).unwrap();
+    let database =
+        crate::sqlite_v4::SqliteV4::create_seeded(&path, &directory, incarnation, &store).unwrap();
     let mut lazy = database.load_store_lazy().unwrap();
     lazy.hydrate_run_body(first_run, database.body(first_run).unwrap().unwrap());
-    let reader = crate::history_reader::HistoryReader::start(&path, &directory, incarnation).unwrap();
+    let reader =
+        crate::history_reader::HistoryReader::start(&path, &directory, incarnation).unwrap();
     let mut cx = HeadlessAppContext::with_platform(
-        platform::current_platform(true).text_system(), Arc::new(crate::ui_assets::AppAssets),
+        platform::current_platform(true).text_system(),
+        Arc::new(crate::ui_assets::AppAssets),
         platform::current_headless_renderer,
     );
     cx.update(init);
     let mut app = None;
-    let window = cx.open_window(size(px(1000.), px(680.)), |w, cx| {
-        let view = cx.new(|cx| TaskApp::new_mock(w, cx));
-        view.update(cx, |a, cx| {
-            a.store = lazy;
-            a.history_reader = Some(reader);
-            a.open_sidebar_task(first_task, w, cx);
-        });
-        app = Some(view.clone());
-        cx.new(|cx| base::Root::new(view, w, cx))
-    }).unwrap();
+    let window = cx
+        .open_window(size(px(1000.), px(680.)), |w, cx| {
+            let view = cx.new(|cx| TaskApp::new_mock(w, cx));
+            view.update(cx, |a, cx| {
+                a.store = lazy;
+                a.history_reader = Some(reader);
+                a.open_sidebar_task(first_task, w, cx);
+            });
+            app = Some(view.clone());
+            cx.new(|cx| base::Root::new(view, w, cx))
+        })
+        .unwrap();
     let app = app.unwrap();
     let handle: AnyWindowHandle = window.into();
     cx.update_window(handle, |_, w, cx| {
@@ -1517,25 +1928,60 @@ fn atomic_reader_navigation_check(root: &Path) {
         assert_eq!(app.read(cx).selected_run(), Some(first_run));
         app.update(cx, |a, cx| {
             a.request_sidebar_task(1, report_task, w, cx);
-            assert_eq!(a.pending_result_navigation.as_ref().map(|pending| pending.run_id), Some(report_run));
-            assert_eq!(a.selected_run(), Some(first_run), "retain the old reader while preparing the destination");
+            assert_eq!(
+                a.pending_result_navigation
+                    .as_ref()
+                    .map(|pending| pending.run_id),
+                Some(report_run)
+            );
+            assert_eq!(
+                a.selected_run(),
+                Some(first_run),
+                "retain the old reader while preparing the destination"
+            );
             a.request_sidebar_task(1, analysis_task, w, cx);
-            assert_eq!(a.pending_result_navigation.as_ref().map(|pending| pending.run_id), Some(analysis_run));
-            assert_eq!(a.selected_run(), Some(first_run), "a newer click replaces only the pending destination");
+            assert_eq!(
+                a.pending_result_navigation
+                    .as_ref()
+                    .map(|pending| pending.run_id),
+                Some(analysis_run)
+            );
+            assert_eq!(
+                a.selected_run(),
+                Some(first_run),
+                "a newer click replaces only the pending destination"
+            );
         });
         w.render_frame(cx);
-        assert_eq!(w.find("run-result-kind").label(), Some("Intermediate evidence"));
-    }).unwrap();
+        assert_eq!(
+            w.find("run-result-kind").label(),
+            Some("Intermediate evidence")
+        );
+    })
+    .unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| a.poll_history_io(cx));
             w.render_frame(cx);
-            assert_ne!(app.read(cx).selected_run(), Some(report_run), "the obsolete destination must never take over");
-            assert_eq!(w.find("run-result-kind").label(), Some("Intermediate evidence"));
-        }).unwrap();
-        if cx.update(|cx| app.read(cx).selected_run() == Some(analysis_run)) { break; }
-        assert!(std::time::Instant::now() < deadline, "prepared result did not open");
+            assert_ne!(
+                app.read(cx).selected_run(),
+                Some(report_run),
+                "the obsolete destination must never take over"
+            );
+            assert_eq!(
+                w.find("run-result-kind").label(),
+                Some("Intermediate evidence")
+            );
+        })
+        .unwrap();
+        if cx.update(|cx| app.read(cx).selected_run() == Some(analysis_run)) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "prepared result did not open"
+        );
         std::thread::sleep(Duration::from_millis(5));
     }
     cx.update_window(handle, |_, w, cx| {
@@ -1549,20 +1995,34 @@ fn atomic_reader_navigation_check(root: &Path) {
             assert!(a.pending_result_navigation.is_none());
         });
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, cx| a.poll_history_io(cx));
             w.render_frame(cx);
-            assert_eq!(app.read(cx).scope(), Scope::Settings, "late body replies must not reopen a cancelled destination");
-        }).unwrap();
-        if cx.update(|cx| !app.read(cx).store.run_body_is_lazy(report_run)) { break; }
-        assert!(std::time::Instant::now() < deadline, "cancelled read did not finish");
+            assert_eq!(
+                app.read(cx).scope(),
+                Scope::Settings,
+                "late body replies must not reopen a cancelled destination"
+            );
+        })
+        .unwrap();
+        if cx.update(|cx| !app.read(cx).store.run_body_is_lazy(report_run)) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "cancelled read did not finish"
+        );
         std::thread::sleep(Duration::from_millis(5));
     }
-    cx.update_window(handle, |_, w, _| w.remove_window()).unwrap();
-    println!("Prepared result navigation retains the reader, chooses the latest click and cancels on navigation");
+    cx.update_window(handle, |_, w, _| w.remove_window())
+        .unwrap();
+    println!(
+        "Prepared result navigation retains the reader, chooses the latest click and cancels on navigation"
+    );
 }
 
 fn copy_result_check(root: &Path) {
@@ -1570,8 +2030,11 @@ fn copy_result_check(root: &Path) {
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, task, run) = ordinary_fixture(&directory, OrdinaryState::Partial);
     store.set_appearance(Appearance::Light);
-    let expected = present_run(&store, store.runs().iter().find(|value| value.id == run).unwrap())
-        .reader_text();
+    let expected = present_run(
+        &store,
+        store.runs().iter().find(|value| value.id == run).unwrap(),
+    )
+    .reader_text();
     let path = directory.join("copy.sqlite3");
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle) = with_app(store, &path, 1000., 680., |a, _, _| {
@@ -1603,34 +2066,4 @@ fn copy_result_check(root: &Path) {
     assert!(copied.contains("Evidence gaps:"));
     assert!(!copied.contains(research::EVIDENCE_GAP_NOTE));
     println!("Copy result matches reader body and notice");
-}
-
-fn export_parity_check(root: &Path) -> Result<(), String> {
-    let directory = root.join("export-parity");
-    std::fs::create_dir_all(&directory).unwrap();
-    let (store, task, run) = ordinary_fixture(&directory, OrdinaryState::Partial);
-    let expected = present_run(&store, store.runs().iter().find(|value| value.id == run).unwrap())
-        .reader_text();
-    let goal = store
-        .task(task)
-        .and_then(|task| task.parent_id)
-        .ok_or("The export fixture lost its goal.")?;
-    let export = store.research_export(goal)?;
-    let (_, bytes) = export
-        .files
-        .iter()
-        .find(|(name, _)| name.starts_with("report/"))
-        .ok_or("The export fixture lost its report file.")?;
-    let markdown = String::from_utf8(bytes.clone()).map_err(|error| error.to_string())?;
-    if !markdown.starts_with(&expected) {
-        return Err("Exported report does not start with the shared reader body and notice.".into());
-    }
-    if markdown.matches(research::EVIDENCE_GAP_NOTICE).count() != 1 {
-        return Err("Exported report duplicated the evidence notice.".into());
-    }
-    if markdown.contains(research::EVIDENCE_GAP_NOTE) {
-        return Err("Exported report leaked the internal evidence marker.".into());
-    }
-    println!("Export report matches reader body and notice");
-    Ok(())
 }

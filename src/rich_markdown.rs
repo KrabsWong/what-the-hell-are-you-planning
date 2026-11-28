@@ -161,11 +161,17 @@ impl MarkdownPlugin for RichBlock {
                                     .outline()
                                     .flex_shrink_0()
                                     .tooltip(crate::i18n::tr("Open diagram: zoom and pan"))
-                                    .on_click(move |_, _, cx| {
-                                        crate::diagram_viewer::open(
-                                            light.clone(), dark.clone(), width, height, cx,
-                                        )
-                                    }),
+                                    .on_click(
+                                        move |_, _, cx| {
+                                            crate::diagram_viewer::open(
+                                                light.clone(),
+                                                dark.clone(),
+                                                width,
+                                                height,
+                                                cx,
+                                            )
+                                        },
+                                    ),
                                 )
                         }))
                         .child(

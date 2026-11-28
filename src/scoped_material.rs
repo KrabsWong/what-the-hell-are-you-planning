@@ -5,9 +5,9 @@ use crate::attachments::{self, Attachment};
 use crate::domain::Store;
 use crate::research_input::{self, ResearchInputImpact};
 use crate::scoped_edit::{
-    approval_context, approval_state, reconcile_goal_scope, restore_scoped_inverse, runtime_stamp,
-    validate_companions, GoalApprovalCompanion, GoalApprovalState, GoalRuntimeStamp,
-    ScopedEditError,
+    GoalApprovalCompanion, GoalApprovalState, GoalRuntimeStamp, ScopedEditError, approval_context,
+    approval_state, reconcile_goal_scope, restore_scoped_inverse, runtime_stamp,
+    validate_companions,
 };
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -182,7 +182,10 @@ pub(crate) struct AppliedMaterialRemove {
     pub change_set: MaterialChangeSet,
 }
 
-pub(crate) fn attachment_sha256(_data_dir: &Path, attachment: &Attachment) -> Result<String, String> {
+pub(crate) fn attachment_sha256(
+    _data_dir: &Path,
+    attachment: &Attachment,
+) -> Result<String, String> {
     if attachment.content_sha256.is_empty() {
         return Err("This material needs background verification before it can be changed.".into());
     }
@@ -205,7 +208,10 @@ pub(crate) fn imported_copy(
     })
 }
 
-fn identity_list(_data_dir: &Path, attachments: &[Attachment]) -> Result<Vec<AttachmentIdentity>, String> {
+fn identity_list(
+    _data_dir: &Path,
+    attachments: &[Attachment],
+) -> Result<Vec<AttachmentIdentity>, String> {
     Ok(attachments
         .iter()
         .map(|attachment| identity(attachment, attachment.content_sha256.clone()))
@@ -221,7 +227,6 @@ fn identity(attachment: &Attachment, sha: String) -> AttachmentIdentity {
         content_sha256: sha,
     }
 }
-
 
 fn validate_imported_copy(data_dir: &Path, copy: &ImportedCopy) -> Result<(), ScopedEditError> {
     let _ = data_dir;
@@ -241,7 +246,9 @@ pub(crate) fn prepare_material_add(
     imported: Vec<ImportedCopy>,
 ) -> Result<MaterialAddPlan, ScopedEditError> {
     if attachments.is_empty() {
-        return Err(ScopedEditError::Rejected("Choose a material to add.".into()));
+        return Err(ScopedEditError::Rejected(
+            "Choose a material to add.".into(),
+        ));
     }
     let task = store
         .task(id)
@@ -317,8 +324,9 @@ pub(crate) fn apply_material_add(
             "The material list changed after this add was prepared.".into(),
         ));
     }
-    let current_impact = research_input::preview_material_additions(store, plan.id, &plan.attachments)
-        .map_err(ScopedEditError::Conflict)?;
+    let current_impact =
+        research_input::preview_material_additions(store, plan.id, &plan.attachments)
+            .map_err(ScopedEditError::Conflict)?;
     if current_impact != plan.impact {
         return Err(ScopedEditError::Conflict(
             "The research context changed after this material was prepared. Review the new impact before adding."
@@ -352,8 +360,8 @@ pub(crate) fn apply_material_add(
     for copy in &plan.imported {
         validate_imported_copy(data_dir, copy)?;
     }
-    let before_identities = identity_list(data_dir, &plan.before)
-        .map_err(ScopedEditError::Rejected)?;
+    let before_identities =
+        identity_list(data_dir, &plan.before).map_err(ScopedEditError::Rejected)?;
     let mut after_identities = before_identities.clone();
     for attachment in &plan.attachments {
         let copy = plan
@@ -370,8 +378,13 @@ pub(crate) fn apply_material_add(
 
     let task = store.task_mut(plan.id).expect("validated task");
     task.attachments.extend(plan.attachments.iter().cloned());
-    task.activity.push(crate::domain::activity_event("Materials added"));
-    let after = store.task(plan.id).expect("validated task").attachments.clone();
+    task.activity
+        .push(crate::domain::activity_event("Materials added"));
+    let after = store
+        .task(plan.id)
+        .expect("validated task")
+        .attachments
+        .clone();
     let mut activity = vec![plan.id];
     let mut approvals = Vec::new();
     for before in &plan.approval_before {
@@ -510,13 +523,8 @@ pub(crate) fn prepare_material_remove_by_identity(
                 .into(),
         ));
     }
-    let plan = prepare_material_remove_inner(
-        store,
-        data_dir,
-        id,
-        index,
-        Some(&target.content_sha256),
-    )?;
+    let plan =
+        prepare_material_remove_inner(store, data_dir, id, index, Some(&target.content_sha256))?;
     if plan.target_identity != *target {
         return Err(ScopedEditError::Conflict(
             "The selected material identity changed after removal was prepared.".into(),
@@ -573,10 +581,10 @@ pub(crate) fn apply_material_remove(
             ));
         }
     }
-    let before_identities = identity_list(data_dir, &plan.before)
-        .map_err(ScopedEditError::Rejected)?;
-    let after_identities = identity_list(data_dir, &plan.after)
-        .map_err(ScopedEditError::Rejected)?;
+    let before_identities =
+        identity_list(data_dir, &plan.before).map_err(ScopedEditError::Rejected)?;
+    let after_identities =
+        identity_list(data_dir, &plan.after).map_err(ScopedEditError::Rejected)?;
     let before_identity = identity(
         &plan.removed,
         attachment_sha256(data_dir, &plan.removed).map_err(ScopedEditError::Rejected)?,
@@ -832,7 +840,7 @@ mod tests {
         let mut store = Store::empty();
         store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
         let task = store
-            .create_task("Material task", 1, Stage::Planned, None)
+            .create_task("Material task", 1, Stage::InProgress, None)
             .unwrap();
         let attachment = crate::attachments::import_bytes(
             &directory,
@@ -866,12 +874,10 @@ mod tests {
                 copies: vec![copy("attachments/b.pdf")],
             },
         ];
-        let first =
-            take_cleanup_obligation(&mut queue, std::path::Path::new("/current")).unwrap();
+        let first = take_cleanup_obligation(&mut queue, std::path::Path::new("/current")).unwrap();
         assert_eq!(first.copies[0].relative_path, "attachments/a.pdf");
         assert_eq!(queue.len(), 2);
-        let second =
-            take_cleanup_obligation(&mut queue, std::path::Path::new("/current")).unwrap();
+        let second = take_cleanup_obligation(&mut queue, std::path::Path::new("/current")).unwrap();
         assert_eq!(second.copies[0].relative_path, "attachments/b.pdf");
         assert_eq!(queue.len(), 1);
         assert_eq!(queue[0].root, std::path::PathBuf::from("/foreign"));
@@ -881,7 +887,11 @@ mod tests {
             copies: vec![copy("attachments/unbound.pdf")],
         });
         assert!(take_cleanup_obligation(&mut queue, std::path::Path::new("/current")).is_none());
-        assert_eq!(queue.len(), 2, "foreign and unknown ownership remain unresolved");
+        assert_eq!(
+            queue.len(),
+            2,
+            "foreign and unknown ownership remain unresolved"
+        );
         assert!(queue[1].root.as_os_str().is_empty());
         assert_eq!(queue[1].copies[0].relative_path, "attachments/unbound.pdf");
     }
@@ -902,7 +912,11 @@ mod tests {
             Err(ScopedEditError::Rejected(_))
         ));
         assert_eq!(store, before);
-        assert!(crate::attachments::resolve(&directory, &attachment).unwrap().exists());
+        assert!(
+            crate::attachments::resolve(&directory, &attachment)
+                .unwrap()
+                .exists()
+        );
         let _ = fs::remove_dir_all(directory);
     }
 
@@ -922,7 +936,7 @@ mod tests {
             .unwrap()
             .requires_approval = true;
         store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
-        store.set_stage(goal, Stage::Planned).unwrap();
+        store.set_stage(goal, Stage::InProgress).unwrap();
         let approval = store.task(goal).unwrap().approved_plan.clone();
         let attachment = crate::attachments::import_bytes(
             &directory,
@@ -931,20 +945,14 @@ mod tests {
         )
         .unwrap();
         let imported = imported_copy(&directory, goal, &attachment).unwrap();
-        let plan = prepare_material_add(
-            &store,
-            &directory,
-            goal,
-            vec![attachment],
-            vec![imported],
-        )
-        .unwrap();
+        let plan = prepare_material_add(&store, &directory, goal, vec![attachment], vec![imported])
+            .unwrap();
         let applied = apply_material_add(&mut store, &directory, &plan).unwrap();
         assert_eq!(store.task(goal).unwrap().stage, Stage::Backlog);
         assert!(!applied.undo.approval.is_empty());
 
         undo_material_edit(&mut store, &directory, &MaterialUndo::Add(applied.undo)).unwrap();
-        assert_eq!(store.task(goal).unwrap().stage, Stage::Planned);
+        assert_eq!(store.task(goal).unwrap().stage, Stage::InProgress);
         assert_eq!(store.task(goal).unwrap().approved_plan, approval);
         let _ = fs::remove_dir_all(directory);
     }
@@ -998,7 +1006,10 @@ mod tests {
         let path = crate::attachments::resolve(&directory, &attachment).unwrap();
         let effect =
             undo_material_edit(&mut store, &directory, &MaterialUndo::Add(applied.undo)).unwrap();
-        assert!(path.exists(), "domain inverse must not delete before durable save");
+        assert!(
+            path.exists(),
+            "domain inverse must not delete before durable save"
+        );
         assert_eq!(effect.cleanup.len(), 1);
         cleanup_imported_copies(&directory, &store, &effect.cleanup, &[]);
         assert!(!path.exists());
@@ -1032,7 +1043,7 @@ mod tests {
                 exit_code: None,
                 agent: "test".into(),
                 model: "test".into(),
-                stage: Stage::Planned,
+                stage: Stage::InProgress,
                 status: "Succeeded".into(),
                 logs: vec![],
                 output: "history".into(),
@@ -1054,7 +1065,11 @@ mod tests {
         let effect =
             undo_material_edit(&mut store, &directory, &MaterialUndo::Add(applied.undo)).unwrap();
         cleanup_imported_copies(&directory, &store, &effect.cleanup, &[]);
-        assert!(crate::attachments::resolve(&directory, &attachment).unwrap().exists());
+        assert!(
+            crate::attachments::resolve(&directory, &attachment)
+                .unwrap()
+                .exists()
+        );
         let _ = fs::remove_dir_all(directory);
     }
 
@@ -1117,11 +1132,7 @@ mod tests {
         // Restore a same-size changed file and confirm it is still rejected.
         fs::write(&path, b"%PDF-1.4\nchanged material\n").unwrap();
         assert!(matches!(
-            undo_material_edit(
-                &mut store,
-                &directory,
-                &MaterialUndo::Remove(applied.undo)
-            ),
+            undo_material_edit(&mut store, &directory, &MaterialUndo::Remove(applied.undo)),
             Err(ScopedEditError::Conflict(_))
         ));
         assert_eq!(store, before);

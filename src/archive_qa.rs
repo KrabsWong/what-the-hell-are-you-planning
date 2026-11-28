@@ -7,12 +7,11 @@ use crate::{
     persistence::Storage,
     views::{label, row},
 };
-use gpui_kit::{test::{TestQueryExt, TestWindowExt}, *};
-use std::{
-    path::Path,
-    sync::Arc,
-    time::Duration,
+use gpui_kit::{
+    test::{TestQueryExt, TestWindowExt},
+    *,
 };
+use std::{path::Path, sync::Arc, time::Duration};
 
 const PLAN: &str = r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect","kind":"collect","depends_on":[]},{"title":"Analyze findings","instructions":"Analyze","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Report","kind":"advise","depends_on":[1]}]}"#;
 
@@ -92,9 +91,9 @@ fn archived_in_progress_list(root: &Path) {
             .unwrap_or_default();
         assert!(status.contains("Archived"), "{status}");
 
-        // Open steps from the Archive list must return to the same Archive
+        // Opening a goal from the Archive list must return to the same Archive
         // list, not the goal's ordinary Topic view.
-        w.click(format!("goal-steps-{goal}"), cx);
+        w.click(format!("task-row-{goal}"), cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).selected(), Some(goal));
         w.click("navigation-back", cx);
@@ -103,7 +102,7 @@ fn archived_in_progress_list(root: &Path) {
         assert!(w.find(format!("task-row-{goal}")).visible());
 
         // The same entry with the keyboard shortcut.
-        w.click(format!("goal-steps-{goal}"), cx);
+        w.click(format!("task-row-{goal}"), cx);
         w.render_frame(cx);
         w.press("cmd-[", cx);
         w.render_frame(cx);
@@ -111,12 +110,7 @@ fn archived_in_progress_list(root: &Path) {
         assert!(w.find(format!("restore-archived-{goal}")).visible());
     })
     .unwrap();
-    screenshot(
-        &mut cx,
-        handle,
-        &directory,
-        "archived-in-progress-list.png",
-    );
+    screenshot(&mut cx, handle, &directory, "archived-in-progress-list.png");
 }
 
 fn ordinary_goal_steps_back(root: &Path) {
@@ -145,18 +139,22 @@ fn ordinary_goal_steps_back(root: &Path) {
             w.render_frame(cx);
             assert_eq!(app.read(cx).visible_tasks().len(), 1);
             let caller = app.read(cx).scope();
-            w.click(format!("goal-steps-{goal}"), cx);
+            w.click(format!("task-row-{goal}"), cx);
             w.render_frame(cx);
             assert_eq!(app.read(cx).selected(), Some(goal));
             w.click("navigation-back", cx);
             w.render_frame(cx);
-            assert_eq!(app.read(cx).scope(), caller, "Open steps returns its list caller");
+            assert_eq!(
+                app.read(cx).scope(),
+                caller,
+                "goal detail returns its list caller"
+            );
             assert!(w.find(format!("task-row-{goal}")).visible());
         })
         .unwrap();
     }
 
-    // Filtered caller: row -> goal detail -> Steps -> Back restores All and its
+    // Filtered caller: row -> goal detail -> Back restores All and its
     // non-empty filter.
     {
         let (mut cx, handle, app) = with_app(store.clone(), &path, 1200., 800., |a, _, _| {
@@ -176,7 +174,7 @@ fn ordinary_goal_steps_back(root: &Path) {
         .unwrap();
     }
 
-    // Topic caller: topic goal row -> Steps -> Back restores the Topic list.
+    // Topic caller: topic goal row -> goal detail -> Back restores the Topic list.
     {
         let topic = store.task_topic(goal).unwrap().id;
         let (mut cx, handle, app) = with_app(store.clone(), &path, 1200., 800., |a, _, _| {
@@ -230,7 +228,11 @@ fn pure_checks() {
     let report = store.research_result(steps[2]).unwrap().output.clone();
     store.archive(goal).unwrap();
     let status = store.task_status(goal, None);
-    assert!(status.label().contains("Archived · 3/3 complete"), "{}", status.label());
+    assert!(
+        status.label().contains("Archived · 3/3 complete"),
+        "{}",
+        status.label()
+    );
     assert_eq!(status.phase, Stage::Done);
     let target = crate::archive_presentation::result_target(&store, goal, true);
     assert_eq!(target, Some(steps[2]));
@@ -268,7 +270,10 @@ fn assert_status_fits(w: &Window, expected: &str) {
     let status = w.find("task-execution-status");
     assert_eq!(status.label(), Some(expected));
     let bounds = status.bounds();
-    assert!(bounds.size.width > px(0.), "status has no width: {bounds:?}");
+    assert!(
+        bounds.size.width > px(0.),
+        "status has no width: {bounds:?}"
+    );
     assert!(
         bounds.right() <= w.viewport_size().width,
         "status overflows right edge: {bounds:?}, viewport {:?}",
@@ -296,7 +301,12 @@ fn ordinary_status_check(directory: &Path, mode: Appearance, width: f32, height:
         assert_status_fits(w, "Execution · Paused");
     })
     .unwrap();
-    screenshot(&mut cx, handle, directory, &format!("ordinary-status-{mode:?}-{width}.png"));
+    screenshot(
+        &mut cx,
+        handle,
+        directory,
+        &format!("ordinary-status-{mode:?}-{width}.png"),
+    );
 }
 
 fn archived_list(directory: &Path, mode: Appearance, width: f32, height: f32) {
@@ -337,7 +347,14 @@ fn archived_list(directory: &Path, mode: Appearance, width: f32, height: f32) {
         assert!(status.contains("Archived · 3/3 complete"), "{status}");
         assert!(w.find(format!("delete-archived-{goal}")).visible());
         assert!(w.find(format!("task-row-{goal}")).visible());
-        assert!(w.find(format!("task-title-container-{goal}")).bounds().size.width > px(60.), "archive actions must leave room for the title");
+        assert!(
+            w.find(format!("task-title-container-{goal}"))
+                .bounds()
+                .size
+                .width
+                > px(60.),
+            "archive actions must leave room for the title"
+        );
         assert!(w.find(format!("restore-archived-{goal}")).visible());
         assert!(w.try_find("execution-status-filter").is_none());
     })
@@ -392,10 +409,9 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
         assert!(w.find("archived-research-badge").visible());
         assert!(w.find(format!("restore-archived-{goal}")).visible());
         assert!(w.try_find("goal-resume").is_none());
-        assert!(w.try_find("goal-export").is_none());
         assert!(w.try_find("approve-research-topic").is_none());
         assert!(w.try_find("regenerate-report").is_none());
-        assert_eq!(w.find("property-Stage").disabled(), Some(true));
+        assert_eq!(w.find("property-Topic project").disabled(), Some(true));
         assert_status_fits(w, "Archived · 3/3 complete");
         let materials = w
             .find("material-drop-hint")
@@ -423,37 +439,12 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
         w.find("research-task-result");
     })
     .unwrap();
-    screenshot(&mut cx, handle, directory, &format!("archive-detail-{mode:?}-{width}.png"));
-
-    cx.update_window(handle, |_, w, cx| {
-        w.click("goal-steps-tab", cx);
-        w.render_frame(cx);
-        for (index, step) in steps.iter().enumerate() {
-            if index > 0 {
-                w.scroll(
-                    "goal-steps-list",
-                    ScrollDelta::Pixels(point(px(0.), px(-160.))),
-                    cx,
-                );
-                w.render_frame(cx);
-            }
-            let status = w
-                .find(format!("goal-step-status-{step}"))
-                .label()
-                .map(str::to_string)
-                .unwrap_or_default();
-            assert!(status.contains("Archived"), "{status}");
-            assert!(w.find(format!("goal-step-{step}")).visible());
-        }
-        assert!(w.try_find("execution-status-filter").is_none());
-    })
-    .unwrap();
-    screenshot(&mut cx, handle, directory, &format!("archive-detail-steps-{mode:?}-{width}.png"));
-    cx.update_window(handle, |_, w, cx| {
-        w.click("goal-overview-tab", cx);
-        w.render_frame(cx);
-    })
-    .unwrap();
+    screenshot(
+        &mut cx,
+        handle,
+        directory,
+        &format!("archive-detail-{mode:?}-{width}.png"),
+    );
 
     let step = steps[0];
     cx.update_window(handle, |_, w, cx| {
@@ -473,7 +464,12 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
         assert_status_fits(w, "Archived · result retained");
     })
     .unwrap();
-    screenshot(&mut cx, handle, directory, &format!("archive-step-{mode:?}-{width}.png"));
+    screenshot(
+        &mut cx,
+        handle,
+        directory,
+        &format!("archive-step-{mode:?}-{width}.png"),
+    );
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.open_task(goal, w, cx));
         w.render_frame(cx);
@@ -492,7 +488,12 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
         assert_eq!(app.read(cx).task_result_context(), Some(goal));
     })
     .unwrap();
-    screenshot(&mut cx, handle, directory, &format!("archive-retained-result-{mode:?}-{width}.png"));
+    screenshot(
+        &mut cx,
+        handle,
+        directory,
+        &format!("archive-retained-result-{mode:?}-{width}.png"),
+    );
 
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.open_task(goal, w, cx));
@@ -513,7 +514,12 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
         assert!(w.try_find(format!("restore-archived-{goal}")).is_none());
     })
     .unwrap();
-    screenshot(&mut cx, handle, directory, &format!("archive-restored-{mode:?}-{width}.png"));
+    screenshot(
+        &mut cx,
+        handle,
+        directory,
+        &format!("archive-restored-{mode:?}-{width}.png"),
+    );
 }
 
 fn qa_prompt_builder(
@@ -526,9 +532,16 @@ fn qa_prompt_builder(
     cx: &mut App,
 ) -> RenderablePromptHandle {
     let focus = cx.focus_handle();
-    let actions = actions.iter().map(|action| action.label().to_string()).collect::<Vec<_>>();
+    let actions = actions
+        .iter()
+        .map(|action| action.label().to_string())
+        .collect::<Vec<_>>();
     let message = message.to_string();
-    let view = cx.new(|_| QaPrompt { focus, message, actions });
+    let view = cx.new(|_| QaPrompt {
+        focus,
+        message,
+        actions,
+    });
     handle.with_view(view, window, cx)
 }
 
@@ -555,10 +568,12 @@ impl Render for QaPrompt {
             .gap_2()
             .bg(rgba(0x00000080))
             .child(label(self.message.clone(), cx))
-            .child(row().gap_2().children(self.actions.iter().enumerate().map(|(index, action)| {
-                button(format!("qa-prompt-{index}"), action.clone())
-                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(PromptResponse(index))))
-            })))
+            .child(row().gap_2().children(self.actions.iter().enumerate().map(
+                |(index, action)| {
+                    button(format!("qa-prompt-{index}"), action.clone())
+                        .on_click(cx.listener(move |_, _, _, cx| cx.emit(PromptResponse(index))))
+                },
+            )))
     }
 }
 
@@ -626,7 +641,10 @@ fn active_archive_confirmation(root: &Path) {
     }
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert!(w.has_active_prompt(), "active archive must ask for confirmation");
+        assert!(
+            w.has_active_prompt(),
+            "active archive must ask for confirmation"
+        );
         w.click("qa-prompt-0", cx);
     })
     .unwrap();
@@ -638,12 +656,13 @@ fn active_archive_confirmation(root: &Path) {
             !app.read(cx).store.task(goal).unwrap().archived,
             "Cancel must not archive"
         );
-        assert!(app
-            .read(cx)
-            .store
-            .runs()
-            .iter()
-            .any(|run| run.task_id == steps[0] && run.status == "Running"));
+        assert!(
+            app.read(cx)
+                .store
+                .runs()
+                .iter()
+                .any(|run| run.task_id == steps[0] && run.status == "Running")
+        );
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "active-archive-cancel.png");
@@ -670,13 +689,14 @@ fn active_archive_confirmation(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
         assert!(app.read(cx).store.task(goal).unwrap().archived);
-        assert!(app
-            .read(cx)
-            .store
-            .runs()
-            .iter()
-            .filter(|run| run.task_id == steps[0])
-            .all(|run| run.status != "Running"));
+        assert!(
+            app.read(cx)
+                .store
+                .runs()
+                .iter()
+                .filter(|run| run.task_id == steps[0])
+                .all(|run| run.status != "Running")
+        );
     })
     .unwrap();
     screenshot(&mut cx, handle, &directory, "active-archive-confirm.png");
@@ -751,8 +771,15 @@ fn goal_menu_labels(root: &Path) {
             w.render_frame(cx);
             w.click("task-actions-menu", cx);
             w.render_frame(cx);
-            let expected = if archived { "Restore goal" } else { "Archive goal" };
-            assert!(w.find_by_label(expected).visible(), "goal menu must say {expected}");
+            let expected = if archived {
+                "Restore goal"
+            } else {
+                "Archive goal"
+            };
+            assert!(
+                w.find_by_label(expected).visible(),
+                "goal menu must say {expected}"
+            );
             w.press("escape", cx);
             w.render_frame(cx);
         })
@@ -781,7 +808,10 @@ fn topic_directory_visibility(root: &Path) {
             w.try_find(format!("topic-link-{empty}")).is_none(),
             "an archived topic without goals must leave the Archive topic strip"
         );
-        assert!(app.read(cx).store.topic(empty).is_some(), "hiding must not delete the topic");
+        assert!(
+            app.read(cx).store.topic(empty).is_some(),
+            "hiding must not delete the topic"
+        );
         assert!(app.read(cx).store.topic(listed).is_some());
     })
     .unwrap();
@@ -800,46 +830,72 @@ fn permanent_delete_confirmation(root: &Path) {
     });
     cx.update(|cx| cx.set_prompt_builder(qa_prompt_builder));
     // An unavailable save must leave the entire deletion scope intact.
-    cx.update(|cx| app.update(cx, |a, cx| {
-        let target = crate::archive_app::ArchiveTarget::Task(goal);
-        let reviewed = a.store.archive_deletion(target).unwrap();
-        let storage = a.storage.take();
-        a.confirm_delete_archived(target, reviewed, cx);
-        assert!(a.store.task(goal).is_some());
-        assert!(steps.iter().all(|id| a.store.task(*id).is_some()));
-        assert!(!a.error.is_empty());
-        a.storage = storage;
-    }));
+    cx.update(|cx| {
+        app.update(cx, |a, cx| {
+            let target = crate::archive_app::ArchiveTarget::Task(goal);
+            let reviewed = a.store.archive_deletion(target).unwrap();
+            let storage = a.storage.take();
+            a.confirm_delete_archived(target, reviewed, cx);
+            assert!(a.store.task(goal).is_some());
+            assert!(steps.iter().all(|id| a.store.task(*id).is_some()));
+            assert!(!a.error.is_empty());
+            a.storage = storage;
+        })
+    });
     for action in ["cancel", "switch-workspace", "delete"] {
         let confirm = action == "delete";
         cx.update_window(handle, |_, w, cx| {
             app.update(cx, |a, _| a.set_scope_identity(Scope::Archive));
-            assert!(app.read(cx).store.task_is_archived(goal), "{action}: target must stay archived");
+            assert!(
+                app.read(cx).store.task_is_archived(goal),
+                "{action}: target must stay archived"
+            );
             w.render_frame(cx);
             w.click(format!("delete-archived-{goal}"), cx);
-        }).unwrap();
+        })
+        .unwrap();
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
             assert!(w.has_active_prompt());
-            assert!(app.read(cx).store.task(goal).is_some(), "confirmation must precede deletion");
+            assert!(
+                app.read(cx).store.task(goal).is_some(),
+                "confirmation must precede deletion"
+            );
             if action == "switch-workspace" {
-                app.update(cx, |a, _| a.storage = Some(Storage::new(directory.join("different-workspace.sqlite3"))));
+                app.update(cx, |a, _| {
+                    a.storage = Some(Storage::new(directory.join("different-workspace.sqlite3")))
+                });
             }
-            w.click(if action == "cancel" { "qa-prompt-0" } else { "qa-prompt-1" }, cx);
-        }).unwrap();
+            w.click(
+                if action == "cancel" {
+                    "qa-prompt-0"
+                } else {
+                    "qa-prompt-1"
+                },
+                cx,
+            );
+        })
+        .unwrap();
         cx.run_until_parked();
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
             let a = app.read(cx);
             assert_eq!(a.store.task(goal).is_none(), confirm);
-            assert!(steps.iter().all(|id| a.store.task(*id).is_none() == confirm));
-            if confirm { assert!(a.undo.is_empty()); }
+            assert!(
+                steps
+                    .iter()
+                    .all(|id| a.store.task(*id).is_none() == confirm)
+            );
+            if confirm {
+                assert!(a.undo.is_empty());
+            }
             if action == "switch-workspace" {
                 assert!(a.error.contains("workspace changed"));
                 app.update(cx, |a, _| a.storage = Some(Storage::new(path.clone())));
             }
-        }).unwrap();
+        })
+        .unwrap();
         let disk = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(disk.task(goal).is_none(), confirm);
     }

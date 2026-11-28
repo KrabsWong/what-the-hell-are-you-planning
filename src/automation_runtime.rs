@@ -4,11 +4,11 @@
 //! `TickPlan`, save it through the single Storage writer, and only then enqueue work.
 use crate::{
     automation::{
-        manual_trigger_key, scheduled_trigger_key, AutomationDefinition, AutomationOccurrence,
-        AutomationOccurrenceSnapshot, DefinitionStatus, OccurrenceReason,
-        OccurrenceStatus, SkipCode, TriggerSource,
+        AutomationDefinition, AutomationOccurrence, AutomationOccurrenceSnapshot, DefinitionStatus,
+        OccurrenceReason, OccurrenceStatus, SkipCode, TriggerSource, manual_trigger_key,
+        scheduled_trigger_key,
     },
-    automation_schedule::{decide, CatchUp, DueDecision},
+    automation_schedule::{CatchUp, DueDecision, decide},
     domain::Store,
 };
 
@@ -82,7 +82,9 @@ impl Store {
                 });
                 continue;
             }
-            let Some(cursor) = definition.cursor else { continue };
+            let Some(cursor) = definition.cursor else {
+                continue;
+            };
             if cursor > now {
                 continue;
             }
@@ -109,9 +111,7 @@ impl Store {
             let pending = self
                 .all_occurrences()
                 .iter()
-                .find(|o| {
-                    o.automation_id == definition.id && o.status == OccurrenceStatus::Queued
-                });
+                .find(|o| o.automation_id == definition.id && o.status == OccurrenceStatus::Queued);
             // An already queued manual request is never replaced by a schedule.
             if let Some(pending) = pending
                 && pending.source == TriggerSource::Manual
@@ -139,7 +139,10 @@ impl Store {
             // Supersede only an older unstarted scheduled occurrence.
             let supersede = pending
                 .filter(|o| o.source == TriggerSource::Scheduled)
-                .filter(|o| o.scheduled_for.is_some_and(|value| value < decision.trigger))
+                .filter(|o| {
+                    o.scheduled_for
+                        .is_some_and(|value| value < decision.trigger)
+                })
                 .map(|o| o.id);
             if decision.expired {
                 plans.push(TickPlan {
@@ -194,7 +197,11 @@ impl Store {
 
     /// Blockers that must stop unattended dispatch rather than retrying forever.
     pub fn automation_blocker(&self, definition: &AutomationDefinition) -> Option<String> {
-        if !self.projects().iter().any(|p| p.id == definition.project_id) {
+        if !self
+            .projects()
+            .iter()
+            .any(|p| p.id == definition.project_id)
+        {
             return Some(
                 "The automation's project was removed or is unavailable. Choose another project."
                     .into(),
@@ -236,9 +243,7 @@ impl Store {
         match &plan.action {
             TickAction::Attention { reason } => {
                 self.mark_automation_attention(definition.id, reason.clone());
-                commit
-                    .attention
-                    .push((definition.id, reason.clone()));
+                commit.attention.push((definition.id, reason.clone()));
             }
             TickAction::Skip {
                 trigger,
@@ -247,7 +252,8 @@ impl Store {
                 code,
                 detail,
             } => {
-                let mut occurrence = build_occurrence(&definition, TriggerSource::Scheduled, *trigger, now)?;
+                let mut occurrence =
+                    build_occurrence(&definition, TriggerSource::Scheduled, *trigger, now)?;
                 occurrence.status = OccurrenceStatus::Skipped;
                 occurrence.reason = Some(OccurrenceReason::new(*code, detail.clone()));
                 occurrence.skipped_count = skipped.count;
@@ -372,7 +378,9 @@ impl Store {
             .map(|o| o.id)
             .collect();
         for id in ids {
-            let Some(mut occurrence) = self.occurrence_mut(id) else { continue };
+            let Some(mut occurrence) = self.occurrence_mut(id) else {
+                continue;
+            };
             if occurrence
                 .transition(
                     OccurrenceStatus::Skipped,
@@ -387,11 +395,7 @@ impl Store {
     }
 
     /// Stop one occurrence and its retries. The app cancels the active process first.
-    pub fn stop_occurrence(
-        &mut self,
-        id: u64,
-        now: i64,
-    ) -> Result<Vec<u64>, String> {
+    pub fn stop_occurrence(&mut self, id: u64, now: i64) -> Result<Vec<u64>, String> {
         let occurrence = self.occurrence(id).ok_or("Automation run not found.")?;
         let automation = occurrence.automation_id;
         let mut runs = vec![];
@@ -430,7 +434,10 @@ impl Store {
         final_run_id: u64,
         now: i64,
     ) -> Result<bool, String> {
-        let occurrence = self.occurrence(id).ok_or("Automation run not found.")?.clone();
+        let occurrence = self
+            .occurrence(id)
+            .ok_or("Automation run not found.")?
+            .clone();
         let goals: Vec<u64> = if occurrence.research_goal_ids.is_empty() {
             occurrence.research_goal_id.into_iter().collect()
         } else {
@@ -457,7 +464,9 @@ impl Store {
                 .max_by_key(|run| run.id)
                 .map(|run| (run.id, run.status.clone(), run.output.clone()));
             // Every approved goal must produce its own final report.
-            let Some(report) = report else { return Ok(false) };
+            let Some(report) = report else {
+                return Ok(false);
+            };
             if report.1 != "Succeeded" || report.2.trim().is_empty() {
                 return Ok(false);
             }
@@ -468,9 +477,7 @@ impl Store {
                 latest_report = Some(report);
             }
         }
-        let report_id = latest_report
-            .ok_or("The period has no final report.")?
-            .0;
+        let report_id = latest_report.ok_or("The period has no final report.")?.0;
         let automation = {
             let mut occurrence = self.occurrence_mut(id).unwrap();
             occurrence.final_run_id = Some(report_id.max(final_run_id));
@@ -490,7 +497,10 @@ impl Store {
         reason: impl Into<String>,
         now: i64,
     ) -> Result<Option<String>, String> {
-        let occurrence = self.occurrence(id).ok_or("Automation run not found.")?.clone();
+        let occurrence = self
+            .occurrence(id)
+            .ok_or("Automation run not found.")?
+            .clone();
         let automation = occurrence.automation_id;
         if occurrence.status.is_terminal() {
             return Ok(None);
@@ -498,7 +508,10 @@ impl Store {
         let reason = reason.into();
         self.occurrence_mut(id).unwrap().transition(
             OccurrenceStatus::Failed,
-            Some(OccurrenceReason::new(SkipCode::ExecutionFailed, reason.clone())),
+            Some(OccurrenceReason::new(
+                SkipCode::ExecutionFailed,
+                reason.clone(),
+            )),
         )?;
         Ok(self.note_automation_failure(automation, now))
     }
@@ -506,10 +519,7 @@ impl Store {
     /// Why this period cannot be retried or continued. The check uses the
     /// occurrence's immutable approved snapshot and owner, never the current
     /// definition's approval, version or shape. The UI and the command share it.
-    pub fn occurrence_retry_blocker(
-        &self,
-        occurrence: &AutomationOccurrence,
-    ) -> Option<String> {
+    pub fn occurrence_retry_blocker(&self, occurrence: &AutomationOccurrence) -> Option<String> {
         let Some(definition) = self.automation(occurrence.automation_id) else {
             return Some("The automation for this period is no longer available.".into());
         };
@@ -532,10 +542,7 @@ impl Store {
                 "This period has no complete approved snapshot and cannot be retried.".into(),
             );
         }
-        if let Err(error) = snapshot
-            .template
-            .validate(snapshot.approved_shape())
-        {
+        if let Err(error) = snapshot.template.validate(snapshot.approved_shape()) {
             return Some(format!(
                 "This period's approved snapshot is not valid: {error}"
             ));
@@ -577,9 +584,7 @@ impl Store {
             .clone();
         if !matches!(
             occurrence.status,
-            OccurrenceStatus::Failed
-                | OccurrenceStatus::Cancelled
-                | OccurrenceStatus::Interrupted
+            OccurrenceStatus::Failed | OccurrenceStatus::Cancelled | OccurrenceStatus::Interrupted
         ) {
             return Err("Only a failed or cancelled period can be retried in place.".into());
         }
@@ -734,7 +739,10 @@ pub fn reconcile_occurrence(
     now: i64,
 ) -> Result<RecoveryCommit, String> {
     let mut commit = RecoveryCommit::default();
-    let occurrence = store.occurrence(id).ok_or("Automation run not found.")?.clone();
+    let occurrence = store
+        .occurrence(id)
+        .ok_or("Automation run not found.")?
+        .clone();
     if !occurrence.status.is_active() {
         return Ok(commit);
     }
@@ -789,7 +797,9 @@ pub fn reconcile_occurrence(
                     "The automation's approval changed while an occurrence was interrupted. Review it before continuing.",
                 );
                 commit.blocked.push(id);
-                commit.attention.push((automation, "Approval changed during recovery".into()));
+                commit
+                    .attention
+                    .push((automation, "Approval changed during recovery".into()));
             }
         }
         SessionState::Unknown => {
@@ -825,9 +835,7 @@ pub fn reconcile_occurrence(
             if !store.automation(automation).is_some_and(|definition| {
                 matches!(
                     definition.status,
-                    DefinitionStatus::Paused
-                        | DefinitionStatus::Archived
-                        | DefinitionStatus::Draft
+                    DefinitionStatus::Paused | DefinitionStatus::Archived | DefinitionStatus::Draft
                 )
             }) {
                 store.mark_automation_attention(
@@ -884,12 +892,28 @@ impl FakeAutomationRunner {
             .occurrence(occurrence)
             .is_some_and(|o| o.status == OccurrenceStatus::Queued)
         {
-            store.occurrence_mut(occurrence).unwrap().mark_running(now)?;
+            store
+                .occurrence_mut(occurrence)
+                .unwrap()
+                .mark_running(now)?;
         }
         if self.outcomes.remove(&occurrence).is_none() && success {
             // Default: synthesize complete research results so the state machine advances.
-            if let Some(goal) = store.occurrence(occurrence).and_then(|o| o.research_goal_id) {
-                for task in store.tasks().iter().filter(|t| t.research.as_ref().is_some_and(|r| r.goal_id == goal && r.kind != crate::research::ResearchKind::Goal)).map(|t| t.id).collect::<Vec<_>>() {
+            if let Some(goal) = store
+                .occurrence(occurrence)
+                .and_then(|o| o.research_goal_id)
+            {
+                for task in store
+                    .tasks()
+                    .iter()
+                    .filter(|t| {
+                        t.research.as_ref().is_some_and(|r| {
+                            r.goal_id == goal && r.kind != crate::research::ResearchKind::Goal
+                        })
+                    })
+                    .map(|t| t.id)
+                    .collect::<Vec<_>>()
+                {
                     if store.research_result(task).is_none() {
                         let mut run = store.prepare_run(task)?;
                         run.automation_occurrence_id = Some(occurrence);
@@ -919,9 +943,7 @@ impl FakeAutomationRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::automation::{
-        AutomationApproval, AutomationPolicy, TimeWindowState,
-    };
+    use crate::automation::{AutomationApproval, AutomationPolicy, TimeWindowState};
     use crate::automation_execution::build_template;
     use crate::automation_schedule::{Schedule, ScheduleSpec};
     use crate::domain::{Stage, Store};
@@ -966,7 +988,10 @@ mod tests {
         assert!(occurrence_recovery_blocker_for(&store, &value, &checks, true).is_some());
         checks.insert(run_id, crate::recovery::SessionCheck::Stopped);
         assert!(occurrence_recovery_blocker_for(&store, &value, &checks, false).is_none());
-        checks.insert(run_id, crate::recovery::SessionCheck::Unknown("later interruption".into()));
+        checks.insert(
+            run_id,
+            crate::recovery::SessionCheck::Unknown("later interruption".into()),
+        );
         value.status = OccurrenceStatus::Running;
         assert!(occurrence_recovery_blocker_for(&store, &value, &checks, false).is_some());
     }
@@ -999,13 +1024,7 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
             });
-            store
-                .approve_and_enable(
-                    id,
-                    vec![],
-                    0,
-                )
-                .unwrap();
+            store.approve_and_enable(id, vec![], 0).unwrap();
             // Freeze the approval to interval minutes for predictable ids.
             store.automation_mut(id).unwrap().anchor = Some(0);
             store.automation_mut(id).unwrap().cursor = Some(300);
@@ -1037,9 +1056,25 @@ mod tests {
         assert_eq!(plans.len(), 1);
         let commit = store.commit_automation_tick(&plans[0], 600).unwrap();
         assert_eq!(commit.superseded.len(), 1);
-        assert_eq!(store.occurrence(occurrence_id).unwrap().status, OccurrenceStatus::Skipped);
-        assert_eq!(store.occurrence(occurrence_id).unwrap().reason.as_ref().unwrap().code, SkipCode::SupersededByNewer);
-        let live: Vec<_> = store.all_occurrences().iter().filter(|o| o.status == OccurrenceStatus::Queued).collect();
+        assert_eq!(
+            store.occurrence(occurrence_id).unwrap().status,
+            OccurrenceStatus::Skipped
+        );
+        assert_eq!(
+            store
+                .occurrence(occurrence_id)
+                .unwrap()
+                .reason
+                .as_ref()
+                .unwrap()
+                .code,
+            SkipCode::SupersededByNewer
+        );
+        let live: Vec<_> = store
+            .all_occurrences()
+            .iter()
+            .filter(|o| o.status == OccurrenceStatus::Queued)
+            .collect();
         assert_eq!(live.len(), 1);
     }
 
@@ -1070,7 +1105,11 @@ mod tests {
     #[test]
     fn missed_periods_are_summarized_and_expiry_skips_without_entities_per_minute() {
         let (mut store, id) = store_with(true);
-        store.automation_mut(id).unwrap().policy.allowed_delay_seconds = 3600;
+        store
+            .automation_mut(id)
+            .unwrap()
+            .policy
+            .allowed_delay_seconds = 3600;
         // 10 missed minutes; only the latest is represented.
         let plans = store.plan_automation_ticks(600 + 300);
         assert_eq!(plans.len(), 1);
@@ -1081,7 +1120,11 @@ mod tests {
         assert_eq!(store.all_occurrences().len(), 1);
         // A long gap is one skipped occurrence, not thousands.
         store.automation_mut(id).unwrap().cursor = Some(1200);
-        store.automation_mut(id).unwrap().policy.allowed_delay_seconds = 60;
+        store
+            .automation_mut(id)
+            .unwrap()
+            .policy
+            .allowed_delay_seconds = 60;
         let late = 1200 + 30 * DAY + 120;
         let plans = store.plan_automation_ticks(late);
         let commit = store.commit_automation_tick(&plans[0], late).unwrap();
@@ -1101,7 +1144,10 @@ mod tests {
         let commit = store.commit_automation_tick(&plans[0], 1800).unwrap();
         assert!(commit.queued.is_empty());
         let skipped = store.occurrence(commit.skipped[0]).unwrap();
-        assert_eq!(skipped.reason.as_ref().unwrap().code, SkipCode::CatchUpSkipped);
+        assert_eq!(
+            skipped.reason.as_ref().unwrap().code,
+            SkipCode::CatchUpSkipped
+        );
         assert_eq!(store.automation(id).unwrap().cursor, Some(2100));
     }
 
@@ -1109,25 +1155,37 @@ mod tests {
     fn manual_run_deduplicates_requests_and_never_moves_the_cursor() {
         let (mut store, id) = store_with(true);
         let cursor = store.automation(id).unwrap().cursor;
-        let first = store.request_manual_occurrence(id, "request-1", 1000).unwrap();
+        let first = store
+            .request_manual_occurrence(id, "request-1", 1000)
+            .unwrap();
         assert_eq!(first.source, TriggerSource::Manual);
         assert_eq!(first.scheduled_for, None);
         assert_eq!(first.requested_at, Some(1000));
         assert_eq!(store.automation(id).unwrap().cursor, cursor);
         // The same request is idempotent.
-        let again = store.request_manual_occurrence(id, "request-1", 2000).unwrap();
+        let again = store
+            .request_manual_occurrence(id, "request-1", 2000)
+            .unwrap();
         assert_eq!(again.id, first.id);
         // A different manual request is refused while one is unstarted.
-        assert!(store
-            .request_manual_occurrence(id, "request-2", 1000)
-            .is_err());
+        assert!(
+            store
+                .request_manual_occurrence(id, "request-2", 1000)
+                .is_err()
+        );
         // A scheduled occurrence does not replace a pending manual request.
         let plans = store.plan_automation_ticks(1800);
         let commit = store.commit_automation_tick(&plans[0], 1800).unwrap();
         assert!(commit.queued.is_empty());
-        assert_eq!(store.occurrence(first.id).unwrap().status, OccurrenceStatus::Queued);
+        assert_eq!(
+            store.occurrence(first.id).unwrap().status,
+            OccurrenceStatus::Queued
+        );
         let skipped = store.occurrence(commit.skipped[0]).unwrap();
-        assert_eq!(skipped.reason.as_ref().unwrap().code, SkipCode::ManualPending);
+        assert_eq!(
+            skipped.reason.as_ref().unwrap().code,
+            SkipCode::ManualPending
+        );
     }
 
     #[test]
@@ -1135,14 +1193,18 @@ mod tests {
         let (mut store, id) = store_with(true);
         let plans = store.plan_automation_ticks(300);
         store.commit_automation_tick(&plans[0], 300).unwrap();
-        let occurrence = store.all_occurrences().iter().find(|occurrence| occurrence.status == OccurrenceStatus::Queued).unwrap().id;
-        let cancelled = store.cancel_unstarted_occurrences(
-            id,
-            SkipCode::Paused,
-            "paused",
-        );
+        let occurrence = store
+            .all_occurrences()
+            .iter()
+            .find(|occurrence| occurrence.status == OccurrenceStatus::Queued)
+            .unwrap()
+            .id;
+        let cancelled = store.cancel_unstarted_occurrences(id, SkipCode::Paused, "paused");
         assert_eq!(cancelled, vec![occurrence]);
-        assert_eq!(store.occurrence(occurrence).unwrap().status, OccurrenceStatus::Skipped);
+        assert_eq!(
+            store.occurrence(occurrence).unwrap().status,
+            OccurrenceStatus::Skipped
+        );
         store.pause_automation(id, 400).unwrap();
         assert_eq!(store.automation(id).unwrap().cursor, None);
         assert!(store.plan_automation_ticks(10_000).is_empty());
@@ -1154,7 +1216,10 @@ mod tests {
         let plans = store.plan_automation_ticks(cursor);
         assert!(matches!(plans[0].action, TickAction::Attention { .. }));
         let commit = store.commit_automation_tick(&plans[0], cursor).unwrap();
-        assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::NeedsAttention);
+        assert_eq!(
+            store.automation(id).unwrap().status,
+            DefinitionStatus::NeedsAttention
+        );
         assert_eq!(commit.attention.len(), 1);
     }
 
@@ -1177,7 +1242,9 @@ mod tests {
         let analyze = second.task_id;
         second.status = "Failed".into();
         store.push_run(second);
-        store.fail_occurrence(occurrence.id, "step failed", 1_020).unwrap();
+        store
+            .fail_occurrence(occurrence.id, "step failed", 1_020)
+            .unwrap();
         assert_eq!(
             store.occurrence(occurrence.id).unwrap().status,
             OccurrenceStatus::Failed
@@ -1188,8 +1255,16 @@ mod tests {
         let reopened = store.occurrence(occurrence.id).unwrap();
         assert_eq!(reopened.status, OccurrenceStatus::Queued);
         assert!(reopened.reason.is_none());
-        assert!(reopened.deadline_at.is_some_and(|deadline| deadline > 2_000));
-        assert_eq!(store.tasks().len(), tasks, "retry must not duplicate plan steps");
+        assert!(
+            reopened
+                .deadline_at
+                .is_some_and(|deadline| deadline > 2_000)
+        );
+        assert_eq!(
+            store.tasks().len(),
+            tasks,
+            "retry must not duplicate plan steps"
+        );
         assert_eq!(
             store.all_occurrences().len(),
             occurrences,
@@ -1217,7 +1292,9 @@ mod tests {
         assert_eq!(second.research_kind, Some(ResearchKind::Analyze));
         second.status = "Failed".into();
         store.push_run(second);
-        store.fail_occurrence(occurrence.id, "step failed", 1_020).unwrap();
+        store
+            .fail_occurrence(occurrence.id, "step failed", 1_020)
+            .unwrap();
         (occurrence.id, goal, collect)
     }
 
@@ -1239,13 +1316,21 @@ mod tests {
         assert_eq!(reopened.reference_time, before.reference_time);
         assert_eq!(reopened.snapshot, before.snapshot);
         assert_eq!(reopened.retry_requested_at, Some(2_000));
-        assert!(reopened.deadline_at.is_some_and(|deadline| deadline > 2_000));
+        assert!(
+            reopened
+                .deadline_at
+                .is_some_and(|deadline| deadline > 2_000)
+        );
         assert_eq!(
             store.automation(id),
             Some(&definition),
             "retrying a period must not resume or otherwise change the schedule"
         );
-        assert_eq!(store.tasks().len(), tasks, "retry must not duplicate plan steps");
+        assert_eq!(
+            store.tasks().len(),
+            tasks,
+            "retry must not duplicate plan steps"
+        );
         assert_eq!(store.task(collect).unwrap().stage, Stage::Done);
         // The original catch-up delay no longer applies to an explicit retry.
         assert!(!reopened.first_start_expired(
@@ -1276,14 +1361,21 @@ mod tests {
     #[test]
     fn retrying_a_needs_attention_period_does_not_resume_the_schedule() {
         let (mut store, id) = store_with(true);
-        store.automation_mut(id).unwrap().policy.max_consecutive_failures = 1;
+        store
+            .automation_mut(id)
+            .unwrap()
+            .policy
+            .max_consecutive_failures = 1;
         let (occurrence, _goal, _collect) = failed_period(&mut store, id, "attention-retry");
         let definition = store.automation(id).unwrap().clone();
         assert_eq!(definition.status, DefinitionStatus::NeedsAttention);
         assert_eq!(definition.cursor, None);
 
         store.retry_occurrence(occurrence, 2_000).unwrap();
-        assert_eq!(store.occurrence(occurrence).unwrap().status, OccurrenceStatus::Queued);
+        assert_eq!(
+            store.occurrence(occurrence).unwrap().status,
+            OccurrenceStatus::Queued
+        );
         assert_eq!(
             store.automation(id),
             Some(&definition),
@@ -1302,8 +1394,7 @@ mod tests {
             .collect();
         store.occurrence_mut(occurrence).unwrap().snapshot.models =
             ["old/plan", "old/collect", "old/analyze", "old/advise"].map(String::from);
-        let revised_template =
-            build_template("New objective", "A different result").unwrap();
+        let revised_template = build_template("New objective", "A different result").unwrap();
         store
             .revise_automation(
                 id,
@@ -1409,7 +1500,10 @@ mod tests {
     fn retrying_ignores_a_later_shape_mutation() {
         let (mut store, id) = store_with(true);
         let (occurrence, goal, _collect) = failed_period(&mut store, id, "shape-retry");
-        assert_eq!(occurrence_shape(&store, occurrence), crate::automation::AutomationShape::Research);
+        assert_eq!(
+            occurrence_shape(&store, occurrence),
+            crate::automation::AutomationShape::Research
+        );
         // Shape is not editable through the user command, but a later store
         // mutation must not make the original approved snapshot unretryable.
         store.automation_mut(id).unwrap().shape = crate::automation::AutomationShape::Quick;
@@ -1499,18 +1593,33 @@ mod tests {
     #[test]
     fn failure_threshold_pauses_and_success_clears_counter() {
         let (mut store, id) = store_with(true);
-        store.automation_mut(id).unwrap().policy.max_consecutive_failures = 2;
+        store
+            .automation_mut(id)
+            .unwrap()
+            .policy
+            .max_consecutive_failures = 2;
         let occurrence = store.request_manual_occurrence(id, "r1", 1000).unwrap();
-        assert!(store.fail_occurrence(occurrence.id, "network", 1000).unwrap().is_none());
+        assert!(
+            store
+                .fail_occurrence(occurrence.id, "network", 1000)
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(store.automation(id).unwrap().consecutive_failures, 1);
         // Skipped and cancelled runs do not count.
         let skipped = store.request_manual_occurrence(id, "r2", 1100).unwrap();
         store.stop_occurrence(skipped.id, 1100).unwrap();
         assert_eq!(store.automation(id).unwrap().consecutive_failures, 1);
         let second = store.request_manual_occurrence(id, "r3", 1200).unwrap();
-        let reason = store.fail_occurrence(second.id, "network", 1200).unwrap().unwrap();
+        let reason = store
+            .fail_occurrence(second.id, "network", 1200)
+            .unwrap()
+            .unwrap();
         assert!(reason.contains("consecutive"));
-        assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::NeedsAttention);
+        assert_eq!(
+            store.automation(id).unwrap().status,
+            DefinitionStatus::NeedsAttention
+        );
         store.note_automation_success(id);
         store.resume_schedule(id, 2000).unwrap();
         assert_eq!(store.automation(id).unwrap().consecutive_failures, 0);
@@ -1520,10 +1629,22 @@ mod tests {
     fn success_requires_final_report_not_process_exit() {
         let (mut store, id) = store_with(true);
         let occurrence = store
-            .materialize_occurrence(build_occurrence(store.automation(id).unwrap(), TriggerSource::Scheduled, 300, 300).unwrap())
+            .materialize_occurrence(
+                build_occurrence(
+                    store.automation(id).unwrap(),
+                    TriggerSource::Scheduled,
+                    300,
+                    300,
+                )
+                .unwrap(),
+            )
             .unwrap();
         let goal = occurrence.research_goal_id.unwrap();
-        store.occurrence_mut(occurrence.id).unwrap().mark_running(300).unwrap();
+        store
+            .occurrence_mut(occurrence.id)
+            .unwrap()
+            .mark_running(300)
+            .unwrap();
         // Mark every task done but provide no result: not success.
         let ids: Vec<u64> = store
             .tasks()
@@ -1541,7 +1662,11 @@ mod tests {
                 let mut run = store.prepare_run(task).unwrap();
                 run.status = "Succeeded".into();
                 run.output = "Report body".into();
-                run.sources = vec![crate::research::Source{title:"s".into(),url:"https://example.com".into(),published_at:"unknown".into()}];
+                run.sources = vec![crate::research::Source {
+                    title: "s".into(),
+                    url: "https://example.com".into(),
+                    published_at: "unknown".into(),
+                }];
                 run.research_kind = Some(ResearchKind::Advise);
                 store.push_run(run);
             }
@@ -1549,7 +1674,10 @@ mod tests {
         }
         // All result signatures are now valid and the advise exists.
         assert!(store.complete_occurrence(occurrence.id, 9, 300).unwrap());
-        assert_eq!(store.occurrence(occurrence.id).unwrap().status, OccurrenceStatus::Succeeded);
+        assert_eq!(
+            store.occurrence(occurrence.id).unwrap().status,
+            OccurrenceStatus::Succeeded
+        );
         assert!(store.occurrence(occurrence.id).unwrap().unread);
     }
 
@@ -1565,31 +1693,50 @@ mod tests {
             assert_eq!(store.occurrence(occurrence.id).unwrap().status, expected);
             if state == SessionState::Unknown {
                 assert_eq!(commit.blocked, vec![occurrence.id]);
-                assert_eq!(store.automation(id).unwrap().status, DefinitionStatus::NeedsAttention);
+                assert_eq!(
+                    store.automation(id).unwrap().status,
+                    DefinitionStatus::NeedsAttention
+                );
             }
         }
         let (mut store, id) = store_with(true);
-        let occurrence = store.request_manual_occurrence(id, "explicit-retry", 1000).unwrap();
-        store.occurrence_mut(occurrence.id).unwrap().retry_requested_at = Some(1500);
-        let commit = reconcile_occurrence(&mut store, occurrence.id, SessionState::Unknown, 2000).unwrap();
+        let occurrence = store
+            .request_manual_occurrence(id, "explicit-retry", 1000)
+            .unwrap();
+        store
+            .occurrence_mut(occurrence.id)
+            .unwrap()
+            .retry_requested_at = Some(1500);
+        let commit =
+            reconcile_occurrence(&mut store, occurrence.id, SessionState::Unknown, 2000).unwrap();
         assert_eq!(commit.retry, vec![occurrence.id]);
-        assert_eq!(store.occurrence(occurrence.id).unwrap().status, OccurrenceStatus::Queued);
+        assert_eq!(
+            store.occurrence(occurrence.id).unwrap().status,
+            OccurrenceStatus::Queued
+        );
         let (mut store, id) = store_with(true);
         let occurrence = store.request_manual_occurrence(id, "r", 1000).unwrap();
-        let commit = reconcile_occurrence(&mut store, occurrence.id, SessionState::Stopped, 2000).unwrap();
+        let commit =
+            reconcile_occurrence(&mut store, occurrence.id, SessionState::Stopped, 2000).unwrap();
         assert_eq!(commit.retry, vec![occurrence.id]);
-        assert_eq!(store.occurrence(occurrence.id).unwrap().status, OccurrenceStatus::Queued);
+        assert_eq!(
+            store.occurrence(occurrence.id).unwrap().status,
+            OccurrenceStatus::Queued
+        );
         // Completed without final entities remains queued for the next step.
         let (mut store, id) = store_with(true);
         let occurrence = store.request_manual_occurrence(id, "r", 1000).unwrap();
-        let commit = reconcile_occurrence(&mut store, occurrence.id, SessionState::Completed, 2000).unwrap();
+        let commit =
+            reconcile_occurrence(&mut store, occurrence.id, SessionState::Completed, 2000).unwrap();
         assert_eq!(commit.retry.len(), 1);
     }
 
     #[test]
     fn confirmed_complete_recovery_advances_while_unknown_stays_verifying() {
         let (mut store, id) = store_with(true);
-        let occurrence = store.request_manual_occurrence(id, "confirmed-recovery", 1_000).unwrap();
+        let occurrence = store
+            .request_manual_occurrence(id, "confirmed-recovery", 1_000)
+            .unwrap();
         let mut first = store.prepare_occurrence_run(&occurrence, 1_010).unwrap();
         assert_eq!(first.research_kind, Some(ResearchKind::Collect));
         first.status = "Succeeded".into();
@@ -1641,7 +1788,10 @@ mod tests {
         assert_eq!(runner.cancels, vec![occurrence.id]);
         runner.outcomes.insert(occurrence.id, false);
         runner.complete(&mut store, occurrence.id, 2000).unwrap();
-        assert_eq!(store.occurrence(occurrence.id).unwrap().status, OccurrenceStatus::Failed);
+        assert_eq!(
+            store.occurrence(occurrence.id).unwrap().status,
+            OccurrenceStatus::Failed
+        );
     }
 
     #[test]
@@ -1690,11 +1840,7 @@ mod tests {
 
 /// A post-period report regeneration whose own deadline has passed. Its late result
 /// must never replace the period's previous successful report.
-pub(crate) fn expired_regeneration(
-    store: &Store,
-    run: &crate::domain::AgentRun,
-    now: i64,
-) -> bool {
+pub(crate) fn expired_regeneration(store: &Store, run: &crate::domain::AgentRun, now: i64) -> bool {
     run.deadline_at.is_some_and(|deadline| now >= deadline)
         && run.research_kind == Some(crate::research::ResearchKind::Advise)
         && run.automation_occurrence_id.is_some_and(|id| {
@@ -1711,9 +1857,12 @@ fn occurrence_recovery_blocker_for(
     allow_unknown_retry: bool,
 ) -> Option<String> {
     let mut latest_by_task = std::collections::BTreeSet::new();
-    for run in occurrence.run_ids.iter().rev().filter_map(|id| {
-        store.runs().iter().find(|run| run.id == *id)
-    }) {
+    for run in occurrence
+        .run_ids
+        .iter()
+        .rev()
+        .filter_map(|id| store.runs().iter().find(|run| run.id == *id))
+    {
         if !latest_by_task.insert(run.task_id) {
             continue;
         }
@@ -1803,10 +1952,7 @@ impl TaskApp {
         if self.stop_journal_error.is_some() {
             return;
         }
-        if self.workspace_required
-            || self.storage.is_none()
-            || !self.storage_error.is_empty()
-        {
+        if self.workspace_required || self.storage.is_none() || !self.storage_error.is_empty() {
             return;
         }
         let now = Self::automation_now();
@@ -1835,9 +1981,13 @@ impl TaskApp {
                             .store
                             .automation(automation)
                             .is_some_and(|a| a.status == DefinitionStatus::NeedsAttention)
-                            && self.store.automation(automation).and_then(|a| a.attention_reason.clone())
+                            && self
+                                .store
+                                .automation(automation)
+                                .and_then(|a| a.attention_reason.clone())
                                 .is_some_and(|r| r.starts_with("Paused after"))
-                        { /* expected threshold state */ }
+                        { /* expected threshold state */
+                        }
                         commits.push(commit)
                     }
                     Err(error) => {
@@ -1898,7 +2048,11 @@ impl TaskApp {
 
     /// All normal start entry points route automation-owned steps back to their
     /// occurrence. Returns true when the caller must not continue the normal path.
-    pub(crate) fn route_automation_task(&mut self, task_id: u64, cx: &mut gpui_kit::Context<Self>) -> bool {
+    pub(crate) fn route_automation_task(
+        &mut self,
+        task_id: u64,
+        cx: &mut gpui_kit::Context<Self>,
+    ) -> bool {
         let Some(task) = self.store.task(task_id) else {
             return false;
         };
@@ -1946,8 +2100,16 @@ impl TaskApp {
         true
     }
 
-    pub(crate) fn route_automation_goal(&mut self, goal: u64, cx: &mut gpui_kit::Context<Self>) -> bool {
-        if self.store.task(goal).is_none_or(|task| task.automation_id.is_none()) {
+    pub(crate) fn route_automation_goal(
+        &mut self,
+        goal: u64,
+        cx: &mut gpui_kit::Context<Self>,
+    ) -> bool {
+        if self
+            .store
+            .task(goal)
+            .is_none_or(|task| task.automation_id.is_none())
+        {
             return false;
         }
         let Some(occurrence) = self.active_automation_occurrence_for_goal(goal) else {
@@ -2128,15 +2290,20 @@ impl TaskApp {
         let run = match self.store.prepare_occurrence_run(&occurrence, now) {
             Ok(run) => run,
             Err(error) => {
-                let terminal = error.contains("no research goal")
-                    || error.contains("No runnable step");
+                let terminal =
+                    error.contains("no research goal") || error.contains("No runnable step");
                 if terminal {
-                    let _ = self.store.fail_occurrence(occurrence_id, error.clone(), now);
+                    let _ = self
+                        .store
+                        .fail_occurrence(occurrence_id, error.clone(), now);
                 } else {
                     if let Some(mut value) = self.store.occurrence_mut(occurrence_id) {
                         let _ = value.transition(
                             OccurrenceStatus::Verifying,
-                            Some(OccurrenceReason::new(SkipCode::DefinitionChanged, error.clone())),
+                            Some(OccurrenceReason::new(
+                                SkipCode::DefinitionChanged,
+                                error.clone(),
+                            )),
                         );
                     }
                     self.store
@@ -2194,11 +2361,11 @@ impl TaskApp {
             cx.notify();
             return;
         }
-        let result = self
-            .automation_fake
-            .as_mut()
-            .unwrap()
-            .complete(&mut self.store, occurrence.id, now);
+        let result =
+            self.automation_fake
+                .as_mut()
+                .unwrap()
+                .complete(&mut self.store, occurrence.id, now);
         if let Err(error) = result {
             self.error = format!("Fake automation failed: {error}");
         }
@@ -2231,13 +2398,12 @@ impl TaskApp {
                     )),
                 );
             }
-            match self.save_current_store_durably(
-                crate::live_save_app::LiveCompletion::None,
-                cx,
-            ) {
+            match self.save_current_store_durably(crate::live_save_app::LiveCompletion::None, cx) {
                 Ok(_) => {}
                 Err(error) => {
-                    if let Some(rollback) = rollback { self.store = rollback; }
+                    if let Some(rollback) = rollback {
+                        self.store = rollback;
+                    }
                     self.error = format!("Expired automation state was not saved: {error}");
                 }
             }
@@ -2282,11 +2448,14 @@ impl TaskApp {
             .map(|r| r.id)
             .collect();
         for run_id in run_ids {
-            let Some(mut run) = self.store.run_mut(run_id) else { continue };
+            let Some(mut run) = self.store.run_mut(run_id) else {
+                continue;
+            };
             run.status = "Cancelled".into();
             run.ended_at = Some(crate::opencode::timestamp());
-            run.logs
-                .push("[automation] Cancelled because the occurrence time limit was reached.".into());
+            run.logs.push(
+                "[automation] Cancelled because the occurrence time limit was reached.".into(),
+            );
         }
         let rollback = (!self.live_persistence_active()).then(|| self.store.clone());
         let mut notice = None;
@@ -2316,7 +2485,9 @@ impl TaskApp {
         match self.save_current_store_durably(completion, cx) {
             Ok(_) => {}
             Err(error) => {
-                if let Some(rollback) = rollback { self.store = rollback; }
+                if let Some(rollback) = rollback {
+                    self.store = rollback;
+                }
                 self.error = format!("Automation timeout state was not saved: {error}");
             }
         }
@@ -2352,19 +2523,13 @@ impl TaskApp {
     ) {
         let mut ids: Vec<u64> = self.active_runs.iter().map(|run| run.id).collect();
         ids.extend(self.queued_runs.iter().map(|(id, _)| *id));
-        ids.extend(
-            self.recovery
-                .checks
-                .keys()
-                .copied()
-                .filter(|id| {
-                    self.store
-                        .runs()
-                        .iter()
-                        .find(|run| run.id == *id)
-                        .is_some_and(|run| run.status == "Recovering")
-                }),
-        );
+        ids.extend(self.recovery.checks.keys().copied().filter(|id| {
+            self.store
+                .runs()
+                .iter()
+                .find(|run| run.id == *id)
+                .is_some_and(|run| run.status == "Recovering")
+        }));
         ids.sort_unstable();
         ids.dedup();
         for id in ids {
@@ -2400,11 +2565,7 @@ impl TaskApp {
         }
     }
 
-    fn enforce_regeneration_deadlines(
-        &mut self,
-        now: i64,
-        cx: &mut gpui_kit::Context<Self>,
-    ) {
+    fn enforce_regeneration_deadlines(&mut self, now: i64, cx: &mut gpui_kit::Context<Self>) {
         let expired: Vec<u64> = self
             .store
             .runs()
@@ -2486,11 +2647,12 @@ impl TaskApp {
                 None => crate::live_save_app::LiveCompletion::None,
             };
             if let Err(error) = self.save_current_store_durably(completion, cx) {
-                if let Some(rollback) = rollback { self.store = rollback; }
+                if let Some(rollback) = rollback {
+                    self.store = rollback;
+                }
                 self.error = format!("Automation result was not saved: {error}");
-                self.automation_backoff_until = Some(
-                    std::time::Instant::now() + std::time::Duration::from_secs(30),
-                );
+                self.automation_backoff_until =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
                 cx.notify();
                 return;
             }
@@ -2500,7 +2662,10 @@ impl TaskApp {
         }
         let definition = occurrence.automation_id;
         // Timeout wins even if a late success arrives.
-        if occurrence.deadline_at.is_some_and(|deadline| now >= deadline) {
+        if occurrence
+            .deadline_at
+            .is_some_and(|deadline| now >= deadline)
+        {
             self.timeout_occurrence(occurrence_id, now, cx);
             return;
         }
@@ -2516,18 +2681,30 @@ impl TaskApp {
                     if let Some(topic) = occurrence.research_topic_id {
                         self.enqueue_topic_notification(topic, Some(occurrence_id));
                     } else if self.store.automation_notification_enabled(definition) {
-                        let report = self.store.occurrence(occurrence_id)
+                        let report = self
+                            .store
+                            .occurrence(occurrence_id)
                             .and_then(|completed| completed.final_run_id)
-                            .and_then(|final_run| self.store.runs().iter()
-                                .find(|report| report.id == final_run)
-                                .cloned());
+                            .and_then(|final_run| {
+                                self.store
+                                    .runs()
+                                    .iter()
+                                    .find(|report| report.id == final_run)
+                                    .cloned()
+                            });
                         if let Some(report) = report {
-                            let title = self.store.automation(definition)
-                                .map(|definition| format!("Automation complete: {}", definition.name))
+                            let title = self
+                                .store
+                                .automation(definition)
+                                .map(|definition| {
+                                    format!("Automation complete: {}", definition.name)
+                                })
                                 .unwrap_or_else(|| "Automation complete".into());
                             let summary = crate::notification::publication_summary(&report.output);
                             let fingerprint = crate::notification::direct_fingerprint(
-                                occurrence_id, report.id, &summary,
+                                occurrence_id,
+                                report.id,
+                                &summary,
                             );
                             self.store.enqueue_direct_notification_job(
                                 occurrence_id,
@@ -2539,9 +2716,7 @@ impl TaskApp {
                             );
                         }
                     }
-                    let resumed = self
-                        .store
-                        .resume_after_verified_recovery(definition, now);
+                    let resumed = self.store.resume_after_verified_recovery(definition, now);
                     notice = Some(if resumed {
                         "Automation recovered · future triggers resumed".into()
                     } else {
@@ -2621,7 +2796,9 @@ impl TaskApp {
             }
         };
         if let Err(error) = self.save_current_store_durably(completion, cx) {
-            if let Some(rollback) = rollback { self.store = rollback; }
+            if let Some(rollback) = rollback {
+                self.store = rollback;
+            }
             self.error = format!("Automation result was not saved: {error}");
             self.automation_backoff_until =
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
@@ -2712,7 +2889,9 @@ impl TaskApp {
             notice,
         };
         if let Err(error) = self.save_current_store_durably(completion, cx) {
-            if let Some(rollback) = rollback { self.store = rollback; }
+            if let Some(rollback) = rollback {
+                self.store = rollback;
+            }
             self.error = format!("Automation recovery was not saved: {error}");
             self.automation_backoff_until =
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
@@ -2759,5 +2938,4 @@ impl TaskApp {
         self.persist_if_changed(true);
         cx.notify();
     }
-
 }

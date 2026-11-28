@@ -12,9 +12,7 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum EligibilityOwner {
-    OrdinaryResearch {
-        goal: u64,
-    },
+    OrdinaryResearch { goal: u64 },
     AutomationPeriod(AutomationOwnership),
 }
 
@@ -146,7 +144,7 @@ impl ExecutionEligibility {
             Some(PeriodState::Verifying) => return EligibilityDecision::Waiting,
             Some(PeriodState::Ended) => return EligibilityDecision::Ended,
             Some(PeriodState::Missing | PeriodState::Ambiguous) => {
-                return EligibilityDecision::Inactive
+                return EligibilityDecision::Inactive;
             }
             _ => {}
         }
@@ -227,13 +225,15 @@ impl ExecutionEligibility {
             return Some("Waiting for previous goal".into());
         }
         if let Some(barrier) = &self.phase_barrier {
-            return Some(match barrier.phase {
-                ResearchKind::Collect => "Waiting for collection",
-                ResearchKind::Analyze => "Waiting for analysis",
-                ResearchKind::Advise => "Waiting for the final report",
-                ResearchKind::Goal => "Waiting for the plan",
-            }
-            .into());
+            return Some(
+                match barrier.phase {
+                    ResearchKind::Collect => "Waiting for collection",
+                    ResearchKind::Analyze => "Waiting for analysis",
+                    ResearchKind::Advise => "Waiting for the final report",
+                    ResearchKind::Goal => "Waiting for the plan",
+                }
+                .into(),
+            );
         }
         None
     }
@@ -447,12 +447,9 @@ impl Store {
         &self,
         goal: u64,
     ) -> Option<&AutomationOccurrence> {
-        let mut active = self
-            .all_occurrences()
-            .iter()
-            .filter(|occurrence| {
-                occurrence.status.is_active() && occurrence_contains_goal(occurrence, goal)
-            });
+        let mut active = self.all_occurrences().iter().filter(|occurrence| {
+            occurrence.status.is_active() && occurrence_contains_goal(occurrence, goal)
+        });
         let first = active.next()?;
         active.next().is_none().then_some(first)
     }
@@ -481,12 +478,15 @@ impl Store {
                 self.task(*id)
                     .and_then(|task| task.research.as_ref())
                     .is_some_and(|research| research.kind == phase)
-                    && self.execution_eligibility(*id).is_executable_for_preparation()
+                    && self
+                        .execution_eligibility(*id)
+                        .is_executable_for_preparation()
             });
         }
-        children
-            .into_iter()
-            .find(|id| self.execution_eligibility(*id).is_executable_for_preparation())
+        children.into_iter().find(|id| {
+            self.execution_eligibility(*id)
+                .is_executable_for_preparation()
+        })
     }
 
     /// Select the next step for a whole occurrence. Goals stay in approved
@@ -529,7 +529,9 @@ impl Store {
         id: u64,
         owner: EligibilityOwner,
     ) -> ExecutionEligibility {
-        let task = self.task(id).expect("eligibility requires an existing task");
+        let task = self
+            .task(id)
+            .expect("eligibility requires an existing task");
         let latest_run = self
             .runs()
             .iter()
@@ -592,11 +594,12 @@ impl Store {
                     .collect()
             })
             .unwrap_or_default();
-        let pool_wait = (owner.period() == Some(PeriodState::Queued))
-            .then_some(PoolWait::AutomationSlot);
+        let pool_wait =
+            (owner.period() == Some(PeriodState::Queued)).then_some(PoolWait::AutomationSlot);
         let retry_authority = match &owner {
             EligibilityOwner::AutomationPeriod(ownership)
-                if ownership.period == PeriodState::Queued && active_attempt == ActiveAttempt::None =>
+                if ownership.period == PeriodState::Queued
+                    && active_attempt == ActiveAttempt::None =>
             {
                 ownership
                     .occurrence
@@ -618,11 +621,7 @@ impl Store {
         }
     }
 
-    fn phase_barrier_for(
-        &self,
-        goal: u64,
-        kind: Option<ResearchKind>,
-    ) -> Option<PhaseBarrier> {
+    fn phase_barrier_for(&self, goal: u64, kind: Option<ResearchKind>) -> Option<PhaseBarrier> {
         let kind = kind?;
         let children = self.research_children(goal);
         for phase in [
@@ -783,11 +782,7 @@ mod tests {
         (store, goal, ids)
     }
 
-    fn occurrence(
-        id: u64,
-        status: OccurrenceStatus,
-        goals: Vec<u64>,
-    ) -> AutomationOccurrence {
+    fn occurrence(id: u64, status: OccurrenceStatus, goals: Vec<u64>) -> AutomationOccurrence {
         AutomationOccurrence {
             id,
             automation_id: 7,
@@ -879,7 +874,7 @@ mod tests {
         assert_eq!(status.label(), "Waiting for collection");
         assert!(status.reason.contains("Waiting for collection"));
         assert!(!status.reason.contains("Ready"));
-        assert!(!status.reason.contains("add its topic to the queue"));
+        assert!(!status.reason.contains("run the goal"));
     }
 
     #[test]
@@ -927,12 +922,7 @@ mod tests {
     fn ordered_goals_wait_for_the_previous_goal_even_without_dependencies() {
         let (mut store, first_goal, first) = fixture();
         let second_goal = store
-            .create_research_goal_in_topic(
-                "Second goal".into(),
-                "Second fixture.".into(),
-                1,
-                None,
-            )
+            .create_research_goal_in_topic("Second goal".into(), "Second fixture.".into(), 1, None)
             .unwrap();
         let second = store
             .apply_research_plan(
@@ -945,7 +935,11 @@ mod tests {
             store.task_mut(*id).unwrap().automation_id = Some(7);
         }
         running(&mut store, first[0], 1);
-        store.push_occurrence(occurrence(1, OccurrenceStatus::Running, vec![first_goal, second_goal]));
+        store.push_occurrence(occurrence(
+            1,
+            OccurrenceStatus::Running,
+            vec![first_goal, second_goal],
+        ));
 
         assert!(
             store
@@ -1050,7 +1044,11 @@ mod tests {
         let status = store.task_status(ids[0], None);
         assert_eq!(status.label(), "Queued for automation slot");
         assert!(status.reason.contains("automation slot"));
-        assert!(!status.reason.contains("Research queue admission is involved"));
+        assert!(
+            !status
+                .reason
+                .contains("Research queue admission is involved")
+        );
     }
 
     #[test]
@@ -1102,9 +1100,11 @@ mod tests {
         assert!(summary.contains("Daily market review #11"));
 
         let eligibility = store.execution_eligibility(queued_ids[0]);
-        assert!(eligibility
-            .reason(&store, queued_ids[0])
-            .contains("Daily market review"));
+        assert!(
+            eligibility
+                .reason(&store, queued_ids[0])
+                .contains("Daily market review")
+        );
     }
 
     #[test]
@@ -1216,7 +1216,12 @@ mod tests {
             "Failed",
             "explicit retry must not rewrite the historical attempt"
         );
-        assert!(store.task_status(ids[1], None).reason.contains("explicitly reopened"));
+        assert!(
+            store
+                .task_status(ids[1], None)
+                .reason
+                .contains("explicitly reopened")
+        );
     }
 
     #[test]
@@ -1296,6 +1301,8 @@ mod tests {
         let (store, goal, ids) = fixture();
         let mut store = store;
         store.task_mut(goal).unwrap().automation_id = None;
+        store.set_stage(goal, Stage::InProgress).unwrap();
+        store.task_mut(goal).unwrap().approved_plan = store.goal_plan_signature(goal);
         for id in &ids {
             store.task_mut(*id).unwrap().automation_id = None;
         }
@@ -1309,6 +1316,6 @@ mod tests {
         assert!(analysis.label_override().is_none());
         let status = store.task_status(ids[2], None);
         assert_eq!(status.execution, ExecutionStatus::Ready);
-        assert!(status.reason.contains("Run the goal or add its topic to the queue"));
+        assert!(status.reason.contains("Ready to run"));
     }
 }

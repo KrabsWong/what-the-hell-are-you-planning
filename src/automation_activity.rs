@@ -91,9 +91,11 @@ pub fn newest<'a, I>(occurrences: I) -> Option<&'a AutomationOccurrence>
 where
     I: IntoIterator<Item = &'a AutomationOccurrence>,
 {
-    occurrences
-        .into_iter()
-        .max_by(|a, b| occurrence_activity(a).order_key().cmp(&occurrence_activity(b).order_key()))
+    occurrences.into_iter().max_by(|a, b| {
+        occurrence_activity(a)
+            .order_key()
+            .cmp(&occurrence_activity(b).order_key())
+    })
 }
 
 #[cfg(test)]
@@ -158,21 +160,30 @@ mod tests {
         assert_eq!(occurrence_activity(&value).utc, 100);
 
         value.requested_at = Some(110);
-        assert_eq!(occurrence_activity(&value).kind, ActivityKind::ManualRequest);
+        assert_eq!(
+            occurrence_activity(&value).kind,
+            ActivityKind::ManualRequest
+        );
         assert_eq!(occurrence_activity(&value).utc, 110);
 
         value.actual_started_at = Some(120);
         assert_eq!(occurrence_activity(&value).kind, ActivityKind::ActualStart);
 
         value.retry_requested_at = Some(130);
-        assert_eq!(occurrence_activity(&value).kind, ActivityKind::RetryRequested);
+        assert_eq!(
+            occurrence_activity(&value).kind,
+            ActivityKind::RetryRequested
+        );
         assert_eq!(occurrence_activity(&value).utc, 130);
 
         let mut reference = occurrence(2);
         reference.scheduled_for = None;
         reference.reference_time = 0;
         reference.created_at = 80;
-        assert_eq!(occurrence_activity(&reference).kind, ActivityKind::Reference);
+        assert_eq!(
+            occurrence_activity(&reference).kind,
+            ActivityKind::Reference
+        );
         assert_eq!(
             occurrence_activity(&reference).utc,
             0,
@@ -180,7 +191,10 @@ mod tests {
         );
 
         reference.reference_time = -90;
-        assert_eq!(occurrence_activity(&reference).kind, ActivityKind::Reference);
+        assert_eq!(
+            occurrence_activity(&reference).kind,
+            ActivityKind::Reference
+        );
         assert_eq!(occurrence_activity(&reference).utc, -90);
     }
 
@@ -195,12 +209,18 @@ mod tests {
         old.retry_requested_at = Some(300);
         let latest = newest([&old, &newer]).unwrap();
         assert_eq!(latest.id, 1);
-        assert_eq!(occurrence_activity(latest).kind, ActivityKind::RetryRequested);
+        assert_eq!(
+            occurrence_activity(latest).kind,
+            ActivityKind::RetryRequested
+        );
         assert_eq!(occurrence_activity(latest).utc, 300);
 
         let mut ordered = vec![&newer, &old];
         ordered.sort_by(|a, b| compare_newest_first(a, b));
-        assert_eq!(ordered.iter().map(|value| value.id).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(
+            ordered.iter().map(|value| value.id).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
     }
 
     #[test]
@@ -253,7 +273,10 @@ mod tests {
         assert_eq!(newest([&retried, &later]).unwrap().id, 2);
         let mut ordered = vec![&later, &retried];
         ordered.sort_by(|a, b| compare_newest_first(a, b));
-        assert_eq!(ordered.iter().map(|value| value.id).collect::<Vec<_>>(), vec![2, 1]);
+        assert_eq!(
+            ordered.iter().map(|value| value.id).collect::<Vec<_>>(),
+            vec![2, 1]
+        );
         assert_eq!(before.0.retry_requested_at, retried.retry_requested_at);
         assert_eq!(before.1.actual_started_at, later.actual_started_at);
     }

@@ -3,7 +3,11 @@
 //! The browser bridge remains available as a legacy fallback, but a configured
 //! `planning-search-mcp` makes search + fetch the default collection path.
 
-use std::{env, fs, io::Write, path::{Path, PathBuf}};
+use std::{
+    env, fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -32,7 +36,11 @@ pub fn gateway_ready() -> bool {
     gateway_credentials().is_some()
 }
 
-pub fn collection_plan(search_ready: bool, ego_path: &str, ego_lite_enabled: bool) -> CollectionPlan {
+pub fn collection_plan(
+    search_ready: bool,
+    ego_path: &str,
+    ego_lite_enabled: bool,
+) -> CollectionPlan {
     let browser_enabled = ego_lite_enabled && crate::ego::executable(ego_path).is_ok();
     let runtime = if search_ready {
         CollectionRuntime::Search
@@ -41,47 +49,67 @@ pub fn collection_plan(search_ready: bool, ego_path: &str, ego_lite_enabled: boo
     } else {
         CollectionRuntime::Unavailable
     };
-    CollectionPlan { runtime, browser_enabled }
+    CollectionPlan {
+        runtime,
+        browser_enabled,
+    }
 }
 
 fn credentials_path() -> PathBuf {
     env::var_os(CREDENTIALS_PATH_ENV)
         .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|home| {
-            PathBuf::from(home).join(".config/planning-search/credentials.json")
-        }))
+        .or_else(|| {
+            env::var_os("HOME")
+                .map(|home| PathBuf::from(home).join(".config/planning-search/credentials.json"))
+        })
         .unwrap_or_else(|| PathBuf::from(".config/planning-search/credentials.json"))
 }
 
 fn read_credentials(path: &Path) -> Option<(String, String)> {
     let raw = fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let url = value.get("gateway_url").and_then(serde_json::Value::as_str)
-        .map(str::trim).filter(|text| !text.is_empty()).map(str::to_owned);
-    // A legacy `api_key` file still works as a token when the URL comes from env.
-    let token = value.get("token").or_else(|| value.get("api_key"))
+    let url = value
+        .get("gateway_url")
         .and_then(serde_json::Value::as_str)
-        .map(str::trim).filter(|text| !text.is_empty()).map(str::to_owned);
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned);
+    // A legacy `api_key` file still works as a token when the URL comes from env.
+    let token = value
+        .get("token")
+        .or_else(|| value.get("api_key"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned);
     url.zip(token)
 }
 
 fn write_credentials(path: &Path, url: &str, token: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| format!("Cannot create credentials folder: {error}"))?;
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Cannot create credentials folder: {error}"))?;
     }
     let mut options = fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     options.mode(0o600);
-    let mut file = options.open(path).map_err(|error| format!("Cannot open credentials file: {error}"))?;
+    let mut file = options
+        .open(path)
+        .map_err(|error| format!("Cannot open credentials file: {error}"))?;
     let body = serde_json::json!({ "gateway_url": url.trim(), "token": token.trim() }).to_string();
-    file.write_all(body.as_bytes()).map_err(|error| format!("Cannot write credentials file: {error}"))
+    file.write_all(body.as_bytes())
+        .map_err(|error| format!("Cannot write credentials file: {error}"))
 }
 
 /// Gateway URL and token shown in Settings, stored outside the workspace.
 pub fn gateway_credentials() -> Option<(String, String)> {
-    let url = env::var(GATEWAY_URL_ENV).ok().filter(|value| !value.trim().is_empty());
-    let token = env::var(GATEWAY_TOKEN_ENV).ok().filter(|value| !value.trim().is_empty());
+    let url = env::var(GATEWAY_URL_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let token = env::var(GATEWAY_TOKEN_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty());
     match (url, token) {
         (Some(url), Some(token)) => Some((url.trim().to_owned(), token.trim().to_owned())),
         _ => read_credentials(&credentials_path()),
@@ -92,7 +120,8 @@ pub fn save_gateway_credentials(url: &str, token: &str) -> Result<(), String> {
     let path = credentials_path();
     if url.trim().is_empty() || token.trim().is_empty() {
         if path.exists() {
-            fs::remove_file(&path).map_err(|error| format!("Cannot remove credentials file: {error}"))?;
+            fs::remove_file(&path)
+                .map_err(|error| format!("Cannot remove credentials file: {error}"))?;
         }
         return Ok(());
     }
@@ -145,14 +174,20 @@ mod tests {
         let path = path.to_string_lossy().into_owned();
         assert_eq!(
             collection_plan(true, &path, false),
-            CollectionPlan { runtime: CollectionRuntime::Search, browser_enabled: false }
+            CollectionPlan {
+                runtime: CollectionRuntime::Search,
+                browser_enabled: false
+            }
         );
         let advanced = collection_plan(true, &path, true);
         assert_eq!(advanced.runtime, CollectionRuntime::Search);
         assert!(advanced.browser_enabled);
         assert_eq!(
             collection_plan(false, &path, false),
-            CollectionPlan { runtime: CollectionRuntime::Unavailable, browser_enabled: false }
+            CollectionPlan {
+                runtime: CollectionRuntime::Unavailable,
+                browser_enabled: false
+            }
         );
         assert_eq!(
             collection_plan(false, &path, true).runtime,

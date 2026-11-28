@@ -26,9 +26,9 @@ use crate::persistence_journal::{
 use crate::report_publish::{Publication, PublishingConfig};
 use crate::request_planning::{ResearchRequest, StructuredBrief};
 use crate::research::{ResearchConfig, ResearchKind, Source};
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension, ToSql};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
+use rusqlite::{Connection, OptionalExtension, ToSql, params, params_from_iter};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashSet};
@@ -287,7 +287,9 @@ impl SqliteV4 {
         // Keep schema and identity in the main file so a read-only immutable
         // preflight can validate a WAL database without creating sidecars.
         connection
-            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get::<_, i64>(0))
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+                row.get::<_, i64>(0)
+            })
             .map_err(|error| format!("cannot checkpoint new database: {error}"))?;
         Ok(Self {
             connection,
@@ -317,7 +319,10 @@ impl SqliteV4 {
     pub(crate) fn open(path: &Path, root: &Path, incarnation: u64) -> Result<Self, String> {
         ensure_absolute(root)?;
         if !path.is_file() {
-            return Err(format!("workspace database does not exist: {}", path.display()));
+            return Err(format!(
+                "workspace database does not exist: {}",
+                path.display()
+            ));
         }
         // Preflight read-only and immutable: no database is created, no WAL/shm
         // sidecar is written, and unsupported/foreign databases are rejected
@@ -451,12 +456,20 @@ impl SqliteV4 {
             });
         }
         let intent_hash = intent_hash(group)?;
-        let generation_sql = sql_i64(group.generation(), "generation")
-            .map_err(|_| CommitError::OutOfRange { field: "generation", value: group.generation() })?;
-        let base_sql = sql_i64(group.base(), "base")
-            .map_err(|_| CommitError::OutOfRange { field: "base", value: group.base() })?;
-        let incarnation_sql = sql_i64(self.incarnation, "incarnation")
-            .map_err(|_| CommitError::OutOfRange { field: "incarnation", value: self.incarnation })?;
+        let generation_sql =
+            sql_i64(group.generation(), "generation").map_err(|_| CommitError::OutOfRange {
+                field: "generation",
+                value: group.generation(),
+            })?;
+        let base_sql = sql_i64(group.base(), "base").map_err(|_| CommitError::OutOfRange {
+            field: "base",
+            value: group.base(),
+        })?;
+        let incarnation_sql =
+            sql_i64(self.incarnation, "incarnation").map_err(|_| CommitError::OutOfRange {
+                field: "incarnation",
+                value: self.incarnation,
+            })?;
         // All generation/base/receipt checks are inside the write transaction so
         // two handles cannot both pass a pre-transaction check.
         let transaction = self
@@ -545,7 +558,9 @@ impl SqliteV4 {
             )
             .map_err(|error| CommitError::Storage(error.to_string()))?;
         if fault == Fault::BeforeCommit {
-            return Err(CommitError::Storage("injected before-commit failure".into()));
+            return Err(CommitError::Storage(
+                "injected before-commit failure".into(),
+            ));
         }
         transaction
             .commit()
@@ -643,7 +658,9 @@ impl SqliteV4 {
                 .prepare("SELECT key,payload FROM meta")
                 .map_err(|error| error.to_string())?;
             let rows = statement
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
                 .map_err(|error| error.to_string())?;
             for row in rows {
                 let (key, payload) = row.map_err(|error| error.to_string())?;
@@ -660,8 +677,14 @@ impl SqliteV4 {
             "run_id_floor",
             0u64,
         )?));
-        store.set_metadata(MetadataDelta::OpenCodePath(parse_meta(&meta, "opencode_path")?));
-        store.set_metadata(MetadataDelta::DefaultModel(parse_meta(&meta, "default_model")?));
+        store.set_metadata(MetadataDelta::OpenCodePath(parse_meta(
+            &meta,
+            "opencode_path",
+        )?));
+        store.set_metadata(MetadataDelta::DefaultModel(parse_meta(
+            &meta,
+            "default_model",
+        )?));
         store.set_metadata(MetadataDelta::ModelProfiles(parse_meta(
             &meta,
             "model_profiles",
@@ -683,7 +706,11 @@ impl SqliteV4 {
             "research_config",
         )?));
         store.set_metadata(MetadataDelta::Appearance(parse_meta(&meta, "appearance")?));
-        store.set_metadata(MetadataDelta::LiquidGlass(parse_meta_or(&meta, "liquid_glass", false)?));
+        store.set_metadata(MetadataDelta::LiquidGlass(parse_meta_or(
+            &meta,
+            "liquid_glass",
+            false,
+        )?));
         store.set_metadata(MetadataDelta::InterfaceLanguage(parse_meta_or(
             &meta,
             "interface_language",
@@ -797,14 +824,9 @@ impl SqliteV4 {
         let (total, total_count_vm_steps) = count_on(&transaction, query.automation, false)?;
         let (unread, unread_count_vm_steps) = count_on(&transaction, query.automation, true)?;
         if latest > watermark {
-            transaction
-                .commit()
-                .map_err(|error| error.to_string())?;
+            transaction.commit().map_err(|error| error.to_string())?;
             return Ok(HistoryPage {
-                contract: PageContract::Invalidated {
-                    watermark,
-                    latest,
-                },
+                contract: PageContract::Invalidated { watermark, latest },
                 rows: Vec::new(),
                 next: None,
                 total,
@@ -833,12 +855,7 @@ impl SqliteV4 {
                     let run_ids = value
                         .get("run_ids")
                         .and_then(Value::as_array)
-                        .map(|items| {
-                            items
-                                .iter()
-                                .filter_map(Value::as_u64)
-                                .collect::<Vec<u64>>()
-                        })
+                        .map(|items| items.iter().filter_map(Value::as_u64).collect::<Vec<u64>>())
                         .unwrap_or_default();
                     Ok(HistoryRow {
                         id: row.get::<_, i64>(0)? as u64,
@@ -869,9 +886,7 @@ impl SqliteV4 {
         } else {
             None
         };
-        transaction
-            .commit()
-            .map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())?;
         Ok(HistoryPage {
             contract: PageContract::Stable { watermark },
             metrics: PageMetrics {
@@ -890,7 +905,6 @@ impl SqliteV4 {
         })
     }
 
-
     /// Fetch one report body on demand. This is the only API that reads
     /// `run_bodies`; page queries never join it.
     pub(crate) fn body(&self, run_id: u64) -> Result<Option<String>, String> {
@@ -905,10 +919,7 @@ impl SqliteV4 {
             .map_err(|error| error.to_string())
     }
 
-    pub(crate) fn occurrence(
-        &self,
-        id: u64,
-    ) -> Result<Option<AutomationOccurrence>, String> {
+    pub(crate) fn occurrence(&self, id: u64) -> Result<Option<AutomationOccurrence>, String> {
         let row: Option<(String, String)> = self
             .connection
             .query_row(
@@ -1003,9 +1014,9 @@ fn page_sql(query: &PageQuery) -> String {
         (false, true) => format!(
             "{select} WHERE activity_seq<=?1 AND (activity_utc,activity_rank,id) < (?2,?3,?4) {order} LIMIT ?5"
         ),
-        (true, false) => format!(
-            "{select} WHERE automation_id=?1 AND activity_seq<=?2 {order} LIMIT ?3"
-        ),
+        (true, false) => {
+            format!("{select} WHERE automation_id=?1 AND activity_seq<=?2 {order} LIMIT ?3")
+        }
         (true, true) => format!(
             "{select} WHERE automation_id=?1 AND activity_seq<=?2 AND (activity_utc,activity_rank,id) < (?3,?4,?5) {order} LIMIT ?6"
         ),
@@ -1084,11 +1095,9 @@ fn apply_change(
             // Never regress a newer attempt replayed after an older admission.
             let key = format!("request_plan:{request_id}:{revision}");
             let existing: Option<String> = transaction
-                .query_row(
-                    "SELECT payload FROM meta WHERE key=?1",
-                    [&key],
-                    |row| row.get(0),
-                )
+                .query_row("SELECT payload FROM meta WHERE key=?1", [&key], |row| {
+                    row.get(0)
+                })
                 .optional()
                 .map_err(|error| format!("cannot read planning request link: {error}"))?;
             if let Some(payload) = existing
@@ -1112,14 +1121,12 @@ fn apply_change(
             // existing older revision with the accepted newer one. A newer
             // durable revision is never discarded by this dispatch snapshot.
             let mut values = read_meta_collection(transaction, "research_requests")?;
-            let existing = values.iter().position(|value| {
-                value.get("id").and_then(Value::as_u64) == Some(request.id)
-            });
+            let existing = values
+                .iter()
+                .position(|value| value.get("id").and_then(Value::as_u64) == Some(request.id));
             match existing {
                 None => {
-                    values.push(
-                        serde_json::to_value(request).map_err(|error| error.to_string())?,
-                    );
+                    values.push(serde_json::to_value(request).map_err(|error| error.to_string())?);
                     write_meta_collection(transaction, "research_requests", &values)?;
                 }
                 Some(index) => {
@@ -1128,8 +1135,8 @@ fn apply_change(
                         .and_then(Value::as_u64)
                         .unwrap_or(0);
                     if current_revision < u64::from(request.revision) {
-                        values[index] = serde_json::to_value(request)
-                            .map_err(|error| error.to_string())?;
+                        values[index] =
+                            serde_json::to_value(request).map_err(|error| error.to_string())?;
                         write_meta_collection(transaction, "research_requests", &values)?;
                     }
                 }
@@ -1359,10 +1366,7 @@ fn upsert_occurrence(
     Ok(())
 }
 
-fn decrement_snapshot(
-    transaction: &rusqlite::Transaction<'_>,
-    hash: &str,
-) -> Result<(), String> {
+fn decrement_snapshot(transaction: &rusqlite::Transaction<'_>, hash: &str) -> Result<(), String> {
     transaction
         .execute(
             "UPDATE occurrence_snapshots SET refs=refs-1 WHERE hash=?1",
@@ -1370,15 +1374,15 @@ fn decrement_snapshot(
         )
         .map_err(|error| error.to_string())?;
     transaction
-        .execute("DELETE FROM occurrence_snapshots WHERE hash=?1 AND refs<=0", [hash])
+        .execute(
+            "DELETE FROM occurrence_snapshots WHERE hash=?1 AND refs<=0",
+            [hash],
+        )
         .map_err(|error| error.to_string())?;
     Ok(())
 }
 
-fn delete_entity(
-    transaction: &rusqlite::Transaction<'_>,
-    key: &EntityKey,
-) -> Result<(), String> {
+fn delete_entity(transaction: &rusqlite::Transaction<'_>, key: &EntityKey) -> Result<(), String> {
     match key {
         EntityKey::Task(id) => {
             transaction
@@ -1387,7 +1391,10 @@ fn delete_entity(
         }
         EntityKey::Project(id) => {
             transaction
-                .execute("DELETE FROM projects WHERE id=?1", [sql_i64(*id, "project id")?])
+                .execute(
+                    "DELETE FROM projects WHERE id=?1",
+                    [sql_i64(*id, "project id")?],
+                )
                 .map_err(|error| error.to_string())?;
         }
         EntityKey::Topic(id) => delete_meta_entity(transaction, "topics", *id)?,
@@ -1396,7 +1403,10 @@ fn delete_entity(
         }
         EntityKey::Run(id) => {
             transaction
-                .execute("DELETE FROM run_bodies WHERE run_id=?1", [sql_i64(*id, "run id")?])
+                .execute(
+                    "DELETE FROM run_bodies WHERE run_id=?1",
+                    [sql_i64(*id, "run id")?],
+                )
                 .map_err(|error| error.to_string())?;
             transaction
                 .execute("DELETE FROM runs WHERE id=?1", [sql_i64(*id, "run id")?])
@@ -1409,7 +1419,10 @@ fn delete_entity(
         }
         EntityKey::Automation(id) => {
             transaction
-                .execute("DELETE FROM automations WHERE id=?1", [sql_i64(*id, "automation id")?])
+                .execute(
+                    "DELETE FROM automations WHERE id=?1",
+                    [sql_i64(*id, "automation id")?],
+                )
                 .map_err(|error| error.to_string())?;
         }
         EntityKey::Occurrence(id) => {
@@ -1426,7 +1439,10 @@ fn delete_entity(
                 decrement_snapshot(transaction, hash)?;
             }
             transaction
-                .execute("DELETE FROM automation_occurrences WHERE id=?1", [occurrence_id])
+                .execute(
+                    "DELETE FROM automation_occurrences WHERE id=?1",
+                    [occurrence_id],
+                )
                 .map_err(|error| error.to_string())?;
         }
     }
@@ -1440,7 +1456,9 @@ fn read_meta_collection(
     field: &str,
 ) -> Result<Vec<Value>, String> {
     let payload: Option<String> = transaction
-        .query_row("SELECT payload FROM meta WHERE key=?1", [field], |row| row.get(0))
+        .query_row("SELECT payload FROM meta WHERE key=?1", [field], |row| {
+            row.get(0)
+        })
         .optional()
         .map_err(|error| error.to_string())?;
     match payload {
@@ -1539,16 +1557,22 @@ fn metadata_value(delta: &MetadataDelta) -> Result<Value, String> {
     .map_err(|error| error.to_string())
 }
 
-fn seed_metadata(
-    transaction: &rusqlite::Transaction<'_>,
-    store: &Store,
-) -> Result<(), String> {
+fn seed_metadata(transaction: &rusqlite::Transaction<'_>, store: &Store) -> Result<(), String> {
     let values = [
         ("next_id", serde_json::to_value(&store.next_id())),
         ("run_id_floor", serde_json::to_value(&store.run_id_floor())),
-        ("opencode_path", serde_json::to_value(&store.opencode_path())),
-        ("default_model", serde_json::to_value(&store.default_model())),
-        ("model_profiles", serde_json::to_value(&store.model_profiles())),
+        (
+            "opencode_path",
+            serde_json::to_value(&store.opencode_path()),
+        ),
+        (
+            "default_model",
+            serde_json::to_value(&store.default_model()),
+        ),
+        (
+            "model_profiles",
+            serde_json::to_value(&store.model_profiles()),
+        ),
         (
             "active_model_profile",
             serde_json::to_value(&store.active_model_profile()),
@@ -1561,7 +1585,10 @@ fn seed_metadata(
             "max_concurrent_automations",
             serde_json::to_value(store.max_concurrent_automations()),
         ),
-        ("research_config", serde_json::to_value(&store.research_config())),
+        (
+            "research_config",
+            serde_json::to_value(&store.research_config()),
+        ),
         ("appearance", serde_json::to_value(store.appearance())),
         ("liquid_glass", serde_json::to_value(store.liquid_glass())),
         (
@@ -1585,8 +1612,14 @@ fn seed_metadata(
             serde_json::to_value(store.recovery_snapshot()),
         ),
         ("publications", serde_json::to_value(&store.publications())),
-        ("notification_config", serde_json::to_value(&store.notification_config())),
-        ("notification_jobs", serde_json::to_value(&store.notification_jobs())),
+        (
+            "notification_config",
+            serde_json::to_value(&store.notification_config()),
+        ),
+        (
+            "notification_jobs",
+            serde_json::to_value(&store.notification_jobs()),
+        ),
         ("topics", serde_json::to_value(&store.topics())),
         (
             "research_requests",
@@ -1614,7 +1647,8 @@ fn parse_meta<T: DeserializeOwned>(meta: &BTreeMap<String, Value>, key: &str) ->
     let value = meta
         .get(key)
         .ok_or_else(|| format!("missing metadata field {key}"))?;
-    serde_json::from_value(value.clone()).map_err(|error| format!("invalid metadata {key}: {error}"))
+    serde_json::from_value(value.clone())
+        .map_err(|error| format!("invalid metadata {key}: {error}"))
 }
 
 /// Older v4 databases predate a metadata field. A missing value uses the
@@ -1813,8 +1847,7 @@ fn immutable_uri(path: &Path) -> String {
 }
 
 fn sql_i64(value: u64, label: &str) -> Result<i64, String> {
-    i64::try_from(value)
-        .map_err(|_| format!("{label} {value} exceeds SQLite INTEGER range"))
+    i64::try_from(value).map_err(|_| format!("{label} {value} exceeds SQLite INTEGER range"))
 }
 
 fn sql_opt_i64(value: Option<u64>, label: &str) -> Result<Option<i64>, String> {
@@ -1845,9 +1878,7 @@ fn count_on(
             Vec::new(),
         ),
     };
-    let mut statement = connection
-        .prepare(sql)
-        .map_err(|error| error.to_string())?;
+    let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
     let value = statement
         .query_row(
             params_from_iter(values.iter().map(|value| value.as_ref())),
@@ -1893,15 +1924,14 @@ pub(crate) fn schema_version(path: &Path) -> Result<u32, String> {
 
 /// Read the immutable identity of an existing v4 database.
 pub(crate) fn read_incarnation(path: &Path) -> Result<u64, String> {
-    let connection = Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
     let value: i64 = connection
-        .query_row("SELECT incarnation FROM database_identity WHERE id=1", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT incarnation FROM database_identity WHERE id=1",
+            [],
+            |row| row.get(0),
+        )
         .map_err(|error| format!("cannot read workspace incarnation: {error}"))?;
     u64::try_from(value).map_err(|_| "workspace incarnation is out of range".to_string())
 }
@@ -1915,7 +1945,10 @@ fn migrate_inner(
 ) -> Result<MigrationOutcome, String> {
     ensure_absolute(root)?;
     if !path.is_file() {
-        return Err(format!("workspace database does not exist: {}", path.display()));
+        return Err(format!(
+            "workspace database does not exist: {}",
+            path.display()
+        ));
     }
     // Exclusive ownership for the whole read/backup/replace sequence. The lock
     // is the same workspace lock the live app uses, so a running app or another
@@ -1941,8 +1974,7 @@ fn migrate_inner(
             "schema version {version} must first use the existing v1/v2 path-upgrade route; no file was changed"
         ));
     }
-    let store = crate::sqlite_storage::load(path, root)?
-        .ok_or("v3 workspace returned no store")?;
+    let store = crate::sqlite_storage::load(path, root)?.ok_or("v3 workspace returned no store")?;
     validate_store(&store)?;
     let backup = unique_sibling(path, "before-schema-v4", "sqlite3");
     vacuum_backup(path, &backup)?;
@@ -2041,11 +2073,8 @@ fn checkpoint_original(path: &Path) -> Result<(), String> {
 }
 
 fn read_user_version(path: &Path) -> Result<i64, String> {
-    let connection = Connection::open_with_flags(
-        path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
     connection
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|error| format!("cannot read schema version: {error}"))
@@ -2061,7 +2090,10 @@ fn validate_store(store: &Store) -> Result<(), String> {
     let mut ids = HashSet::new();
     for project in store.projects() {
         if !ids.insert(project.id) {
-            return Err(format!("duplicate project id {} before migration", project.id));
+            return Err(format!(
+                "duplicate project id {} before migration",
+                project.id
+            ));
         }
     }
     let mut ids = HashSet::new();
@@ -2073,7 +2105,10 @@ fn validate_store(store: &Store) -> Result<(), String> {
     let mut ids = HashSet::new();
     for automation in store.automations() {
         if !ids.insert(automation.id) {
-            return Err(format!("duplicate automation id {} before migration", automation.id));
+            return Err(format!(
+                "duplicate automation id {} before migration",
+                automation.id
+            ));
         }
     }
     let mut ids = HashSet::new();
@@ -2097,15 +2132,16 @@ fn validate_store(store: &Store) -> Result<(), String> {
 
 fn vacuum_backup(source: &Path, destination: &Path) -> Result<(), String> {
     if destination.exists() {
-        return Err(format!("backup target already exists: {}", destination.display()));
+        return Err(format!(
+            "backup target already exists: {}",
+            destination.display()
+        ));
     }
     // Read-only source: SQLite reads committed WAL content for VACUUM INTO
     // without checkpointing or otherwise mutating the source database.
-    let connection = Connection::open_with_flags(
-        source,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| format!("cannot open source for backup: {error}"))?;
+    let connection =
+        Connection::open_with_flags(source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| format!("cannot open source for backup: {error}"))?;
     connection
         .busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|error| error.to_string())?;
@@ -2124,16 +2160,12 @@ fn vacuum_backup(source: &Path, destination: &Path) -> Result<(), String> {
     connection
         .execute(
             "VACUUM INTO ?1",
-            [destination
-                .to_str()
-                .ok_or("backup path must be UTF-8")?],
+            [destination.to_str().ok_or("backup path must be UTF-8")?],
         )
         .map_err(|error| format!("cannot write backup: {error}"))?;
-    let backup = Connection::open_with_flags(
-        destination,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|error| format!("cannot verify backup: {error}"))?;
+    let backup =
+        Connection::open_with_flags(destination, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| format!("cannot verify backup: {error}"))?;
     let checks: Vec<String> = {
         let mut statement = backup
             .prepare("PRAGMA integrity_check")
@@ -2161,8 +2193,8 @@ pub(crate) fn backup_v3_verified(
     expected: &Store,
 ) -> Result<(), String> {
     vacuum_backup(source, destination)?;
-    let restored = crate::sqlite_storage::load(destination, root)?
-        .ok_or("v3 backup returned no store")?;
+    let restored =
+        crate::sqlite_storage::load(destination, root)?.ok_or("v3 backup returned no store")?;
     if restored != *expected {
         return Err("v3 backup logical state differs from the original".into());
     }
@@ -2283,7 +2315,8 @@ mod tests {
         let mut store = Store::mock();
         let project_directory = root.join("project");
         fs::create_dir_all(&project_directory).unwrap();
-        store.project_at_mut(0).unwrap().directory = project_directory.to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            project_directory.to_string_lossy().into_owned();
         store.set_default_model("qa/model".into());
         store.research_config_mut().models = std::array::from_fn(|_| "qa/model".into());
         let schedule = Schedule {
@@ -2356,7 +2389,9 @@ mod tests {
                 1_300,
             )
             .unwrap();
-        store.approve_and_enable(research, Vec::new(), 1_300).unwrap();
+        store
+            .approve_and_enable(research, Vec::new(), 1_300)
+            .unwrap();
         store.automation_mut(research).unwrap().cursor = Some(1_900);
         let mut materialized = store
             .request_manual_occurrence(research, "research-manual-1", 1_400)
@@ -2448,7 +2483,9 @@ mod tests {
             occurrence.research_goal_ids.clear();
             occurrence.run_ids.clear();
             occurrence.final_run_id = None;
-            store.record_occurrence_without_research(occurrence).unwrap();
+            store
+                .record_occurrence_without_research(occurrence)
+                .unwrap();
         }
     }
 
@@ -2541,16 +2578,29 @@ mod tests {
         let mut database = SqliteV4::open(&path, &root, INCARNATION).unwrap();
         assert!(database.load_store().unwrap().liquid_glass());
         let mut journal = ChangeJournal::new(INCARNATION);
-        let group = journal.stage_with_metadata(
-            Vec::new(), vec![MetadataDelta::LiquidGlass(false)], Vec::new(),
-        ).unwrap();
+        let group = journal
+            .stage_with_metadata(
+                Vec::new(),
+                vec![MetadataDelta::LiquidGlass(false)],
+                Vec::new(),
+            )
+            .unwrap();
         database.commit_group(&group).unwrap();
         drop(database);
         let database = SqliteV4::open(&path, &root, INCARNATION).unwrap();
         assert!(!database.load_store().unwrap().liquid_glass());
-        database.connection.execute("DELETE FROM meta WHERE key='liquid_glass'", []).unwrap();
+        database
+            .connection
+            .execute("DELETE FROM meta WHERE key='liquid_glass'", [])
+            .unwrap();
         assert!(!database.load_store().unwrap().liquid_glass());
-        database.connection.execute("INSERT INTO meta(key,payload) VALUES('liquid_glass','42')", []).unwrap();
+        database
+            .connection
+            .execute(
+                "INSERT INTO meta(key,payload) VALUES('liquid_glass','42')",
+                [],
+            )
+            .unwrap();
         assert!(database.load_store().is_err());
     }
 
@@ -2622,7 +2672,10 @@ mod tests {
         assert_eq!(database.receipt(1).unwrap(), Some(vec![9]));
         drop(database);
         let reopened = SqliteV4::open(&path, &root, INCARNATION).unwrap();
-        assert_eq!(reopened.load_store().unwrap().task(1).unwrap().title, changed.title);
+        assert_eq!(
+            reopened.load_store().unwrap().task(1).unwrap().title,
+            changed.title
+        );
     }
 
     #[test]
@@ -2641,9 +2694,7 @@ mod tests {
             let fault_path = root.join(format!("{fault:?}.sqlite3"));
             let mut database =
                 SqliteV4::create_seeded(&fault_path, &root, INCARNATION, &store).unwrap();
-            assert!(database
-                .commit_group_with_fault(&group, fault)
-                .is_err());
+            assert!(database.commit_group_with_fault(&group, fault).is_err());
             assert_eq!(database.load_store().unwrap(), store);
             assert_eq!(database.durable_generation().unwrap(), 0);
             let commits: i64 = database
@@ -2656,9 +2707,11 @@ mod tests {
         let after_path = root.join("after.sqlite3");
         let mut database =
             SqliteV4::create_seeded(&after_path, &root, INCARNATION, &store).unwrap();
-        assert!(database
-            .commit_group_with_fault(&group, Fault::AfterCommit)
-            .is_err());
+        assert!(
+            database
+                .commit_group_with_fault(&group, Fault::AfterCommit)
+                .is_err()
+        );
         assert_eq!(database.durable_generation().unwrap(), 1);
         let applied = database.load_store().unwrap();
         assert_eq!(applied.task(1).unwrap().title, "faulted title");
@@ -2679,7 +2732,10 @@ mod tests {
             database.commit_group(&conflicting).unwrap_err(),
             CommitError::IntentConflict { generation: 1 }
         );
-        assert_eq!(database.load_store().unwrap().task(1).unwrap().title, "faulted title");
+        assert_eq!(
+            database.load_store().unwrap().task(1).unwrap().title,
+            "faulted title"
+        );
     }
 
     #[test]
@@ -2714,7 +2770,10 @@ mod tests {
             second.commit_group(&conflict).unwrap_err(),
             CommitError::IntentConflict { generation: 1 }
         );
-        assert_eq!(first.load_store().unwrap().task(1).unwrap().title, "first writer");
+        assert_eq!(
+            first.load_store().unwrap().task(1).unwrap().title,
+            "first writer"
+        );
     }
 
     #[test]
@@ -2776,11 +2835,13 @@ mod tests {
             .unwrap();
         assert!(matches!(page.contract, PageContract::Stable { .. }));
         let mut expected: Vec<_> = store.all_occurrences().iter().collect();
-        expected.sort_by(|left, right| {
-            crate::automation_activity::compare_newest_first(left, right)
-        });
+        expected
+            .sort_by(|left, right| crate::automation_activity::compare_newest_first(left, right));
         let expected_ids: Vec<u64> = expected.iter().take(10).map(|value| value.id).collect();
-        assert_eq!(page.rows.iter().map(|row| row.id).collect::<Vec<_>>(), expected_ids);
+        assert_eq!(
+            page.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            expected_ids
+        );
         assert_eq!(page.metrics.run_rows, 0);
         assert_eq!(page.metrics.body_reads, 0);
         let plan = database
@@ -2798,7 +2859,13 @@ mod tests {
             .find(|run| !run.output.is_empty())
             .unwrap()
             .clone();
-        assert!(database.body(run.id).unwrap().unwrap().contains("Representative"));
+        assert!(
+            database
+                .body(run.id)
+                .unwrap()
+                .unwrap()
+                .contains("Representative")
+        );
         assert_eq!(database.body_reads.get(), 1);
     }
 
@@ -2823,13 +2890,22 @@ mod tests {
         assert_eq!(database.body_reads.get(), 0, "startup must not read bodies");
         assert!(lazy.run_body_is_lazy(run.id));
         assert!(
-            lazy.runs().iter().find(|value| value.id == run.id).is_some_and(|value| value.output.is_empty())
+            lazy.runs()
+                .iter()
+                .find(|value| value.id == run.id)
+                .is_some_and(|value| value.output.is_empty())
         );
         assert!(
             lazy.research_result(run.task_id).is_none(),
             "empty unloaded content must not be returned as a report"
         );
-        assert!(database.body(run.id).unwrap().unwrap().contains("Representative"));
+        assert!(
+            database
+                .body(run.id)
+                .unwrap()
+                .unwrap()
+                .contains("Representative")
+        );
     }
 
     #[test]
@@ -2842,7 +2918,9 @@ mod tests {
         let occurrence = lazy
             .all_occurrences()
             .iter()
-            .find(|occurrence| occurrence.run_ids.len() > 1 && !occurrence.research_goal_ids.is_empty())
+            .find(|occurrence| {
+                occurrence.run_ids.len() > 1 && !occurrence.research_goal_ids.is_empty()
+            })
             .cloned()
             .expect("multi-step fixture occurrence");
         let goal = occurrence.research_goal_ids[0];
@@ -2870,13 +2948,15 @@ mod tests {
         let body = database.body(body_run.0).unwrap().unwrap();
         assert!(lazy.hydrate_run_body(body_run.0, body));
         assert!(!lazy.run_body_is_lazy(body_run.0));
-        assert!(!lazy
-            .runs()
-            .iter()
-            .find(|run| run.id == body_run.0)
-            .unwrap()
-            .output
-            .is_empty());
+        assert!(
+            !lazy
+                .runs()
+                .iter()
+                .find(|run| run.id == body_run.0)
+                .unwrap()
+                .output
+                .is_empty()
+        );
         // A later non-Simulated attempt is authoritative even before its body.
         let next_id = lazy.runs().iter().map(|run| run.id).max().unwrap_or(0) + 1;
         let mut failed = make_run(next_id, body_run.1, Some(occurrence.id), "later");
@@ -2915,7 +2995,9 @@ mod tests {
         retried.retry_requested_at = Some(9_000);
         let mut journal = ChangeJournal::new(INCARNATION);
         let group = journal
-            .stage(vec![EntityChange::Upsert(EntityPayload::Occurrence(retried))])
+            .stage(vec![EntityChange::Upsert(EntityPayload::Occurrence(
+                retried,
+            ))])
             .unwrap();
         database.commit_group(&group).unwrap();
         let second = database
@@ -2944,7 +3026,11 @@ mod tests {
             .unwrap();
         assert_eq!(restarted.rows[0].id, unseen.id);
         assert_eq!(
-            restarted.rows.iter().filter(|row| row.id == unseen.id).count(),
+            restarted
+                .rows
+                .iter()
+                .filter(|row| row.id == unseen.id)
+                .count(),
             1
         );
 
@@ -2956,7 +3042,9 @@ mod tests {
         inserted.requested_at = Some(9_500);
         inserted.actual_started_at = Some(9_500);
         let group = journal
-            .stage(vec![EntityChange::Upsert(EntityPayload::Occurrence(inserted))])
+            .stage(vec![EntityChange::Upsert(EntityPayload::Occurrence(
+                inserted,
+            ))])
             .unwrap();
         database.commit_group(&group).unwrap();
         let third = database
@@ -2998,24 +3086,32 @@ mod tests {
             ])
             .unwrap();
         let fault_path = root.join("atomic-fault.sqlite3");
-        let mut faulted =
-            SqliteV4::create_seeded(&fault_path, &root, INCARNATION, &store).unwrap();
-        assert!(faulted
-            .commit_group_with_fault(&group, Fault::BeforeCommit)
-            .is_err());
+        let mut faulted = SqliteV4::create_seeded(&fault_path, &root, INCARNATION, &store).unwrap();
+        assert!(
+            faulted
+                .commit_group_with_fault(&group, Fault::BeforeCommit)
+                .is_err()
+        );
         assert_eq!(faulted.load_store().unwrap(), store);
         assert_eq!(faulted.durable_generation().unwrap(), 0);
 
         let path = root.join("atomic.sqlite3");
-        let mut database =
-            SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
+        let mut database = SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
         database.commit_group(&group).unwrap();
         let loaded = database.load_store().unwrap();
         assert_eq!(loaded.automation(automation).unwrap().cursor, Some(8_888));
         let linked = loaded.occurrence(occurrence.id).unwrap();
         assert!(linked.run_ids.contains(&new_run_id));
         assert_eq!(linked.final_run_id, Some(new_run_id));
-        assert_eq!(loaded.runs().iter().find(|run| run.id == new_run_id).unwrap().output, "new linked body");
+        assert_eq!(
+            loaded
+                .runs()
+                .iter()
+                .find(|run| run.id == new_run_id)
+                .unwrap()
+                .output,
+            "new linked body"
+        );
     }
 
     #[test]
@@ -3042,12 +3138,7 @@ mod tests {
         assert_eq!(restored, expected);
     }
 
-    fn add_plain_occurrences_for(
-        store: &mut Store,
-        count: usize,
-        automation: u64,
-        prefix: &str,
-    ) {
+    fn add_plain_occurrences_for(store: &mut Store, count: usize, automation: u64, prefix: &str) {
         let template = store.all_occurrences()[0].clone();
         let start = store
             .all_occurrences()
@@ -3124,7 +3215,10 @@ mod tests {
         );
         let plan = database.page_plan(&deep).unwrap();
         assert!(plan.contains("idx_occ_activity"), "plan: {plan}");
-        assert!(plan.contains("SEARCH"), "deep cursor must seek, not scan: {plan}");
+        assert!(
+            plan.contains("SEARCH"),
+            "deep cursor must seek, not scan: {plan}"
+        );
 
         let target_count: i64 = database
             .connection
@@ -3159,7 +3253,10 @@ mod tests {
         assert!(rare_page.metrics.fullscan_steps <= 50);
         assert!(rare_page.metrics.page_vm_steps <= 200);
         let rare_plan = database.page_plan(&rare).unwrap();
-        assert!(rare_plan.contains("idx_occ_auto_activity"), "plan: {rare_plan}");
+        assert!(
+            rare_plan.contains("idx_occ_auto_activity"),
+            "plan: {rare_plan}"
+        );
         assert!(rare_plan.contains("SEARCH"), "plan: {rare_plan}");
         // Counts are reported separately in the metrics; SQLite may optimize a
         // COUNT(*) to fewer VM steps than the select, so equality is not assumed.
@@ -3171,7 +3268,11 @@ mod tests {
         let root = temp_root("ties");
         let mut store = fixture_store(&root);
         add_plain_occurrences(&mut store, 8);
-        let ids: Vec<u64> = store.all_occurrences().iter().map(|occurrence| occurrence.id).collect();
+        let ids: Vec<u64> = store
+            .all_occurrences()
+            .iter()
+            .map(|occurrence| occurrence.id)
+            .collect();
         for id in ids {
             let mut occurrence = store.occurrence_mut(id).unwrap();
             occurrence.reference_time = 7_000;
@@ -3183,9 +3284,8 @@ mod tests {
         let path = root.join("workspace.sqlite3");
         let database = SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
         let mut expected: Vec<_> = store.all_occurrences().iter().collect();
-        expected.sort_by(|left, right| {
-            crate::automation_activity::compare_newest_first(left, right)
-        });
+        expected
+            .sort_by(|left, right| crate::automation_activity::compare_newest_first(left, right));
         let expected_ids: Vec<u64> = expected.iter().map(|value| value.id).collect();
         let mut seen = Vec::new();
         let mut cursor = None;
@@ -3226,7 +3326,9 @@ mod tests {
         let migrated = SqliteV4::open(&path, &root, INCARNATION).unwrap();
         assert_eq!(migrated.load_store().unwrap(), store);
         assert_eq!(
-            crate::sqlite_storage::load(&backup, &root).unwrap().unwrap(),
+            crate::sqlite_storage::load(&backup, &root)
+                .unwrap()
+                .unwrap(),
             store
         );
         #[cfg(unix)]
@@ -3302,8 +3404,7 @@ mod tests {
         // still see the old title.
         let main_only = Connection::open_with_flags(
             immutable_uri(&path),
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
-                | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
         )
         .unwrap();
         let payload: String = main_only
@@ -3314,9 +3415,17 @@ mod tests {
 
         let backup = root.join("preserve-backup.sqlite3");
         backup_v4_verified(&path, &backup, &root, INCARNATION).unwrap();
-        assert_eq!(file_hash(&path), main_before, "backup mutated the main file");
+        assert_eq!(
+            file_hash(&path),
+            main_before,
+            "backup mutated the main file"
+        );
         assert!(wal.exists(), "backup removed the source WAL");
-        assert_eq!(file_hash(&wal), wal_before, "backup checkpointed the source WAL");
+        assert_eq!(
+            file_hash(&wal),
+            wal_before,
+            "backup checkpointed the source WAL"
+        );
         let restored = SqliteV4::open(&backup, &root, INCARNATION)
             .unwrap()
             .load_store()
@@ -3459,9 +3568,7 @@ mod tests {
         let mut duplicate_store = store.clone();
         let mut extra = duplicate_store.all_occurrences()[0].clone();
         extra.id += 1_000;
-        extra.trigger_key = duplicate_store.all_occurrences()[0]
-            .trigger_key
-            .clone();
+        extra.trigger_key = duplicate_store.all_occurrences()[0].trigger_key.clone();
         duplicate_store.push_occurrence(extra);
         crate::sqlite_storage::save(&duplicate, &root, &duplicate_store).unwrap();
         let duplicate_hash = file_hash(&duplicate);
@@ -3496,8 +3603,17 @@ mod tests {
             .load_store()
             .unwrap();
         assert!(Path::new(&relocated.projects()[0].directory).starts_with(&moved));
-        let binding = relocated.automation(automation).unwrap().plan_binding.clone().unwrap();
-        assert!(binding.input_signature.contains(moved.to_string_lossy().as_ref()));
+        let binding = relocated
+            .automation(automation)
+            .unwrap()
+            .plan_binding
+            .clone()
+            .unwrap();
+        assert!(
+            binding
+                .input_signature
+                .contains(moved.to_string_lossy().as_ref())
+        );
         let stale = relocated
             .runs()
             .iter()
@@ -3573,9 +3689,7 @@ mod tests {
         let root = temp_root("ensure-request-revision");
         let path = root.join("workspace.sqlite3");
         let mut base = Store::mock();
-        let id = base
-            .create_research_request(1, None, "old input")
-            .unwrap();
+        let id = base.create_research_request(1, None, "old input").unwrap();
         let mut newer = base
             .research_requests()
             .iter()
@@ -3590,8 +3704,7 @@ mod tests {
             .find(|request| request.id == id)
             .cloned()
             .unwrap();
-        let mut database =
-            SqliteV4::create_seeded(&path, &root, INCARNATION, &base).unwrap();
+        let mut database = SqliteV4::create_seeded(&path, &root, INCARNATION, &base).unwrap();
         let mut journal = ChangeJournal::new(INCARNATION);
         let group = journal
             .stage(vec![EntityChange::EnsureResearchRequest(newer)])
@@ -3625,8 +3738,7 @@ mod tests {
         let id = base
             .create_research_request(1, None, "orphan input")
             .unwrap();
-        let mut database =
-            SqliteV4::create_seeded(&path, &root, INCARNATION, &base).unwrap();
+        let mut database = SqliteV4::create_seeded(&path, &root, INCARNATION, &base).unwrap();
         database
             .connection
             .execute(
@@ -3651,14 +3763,16 @@ mod tests {
     }
 }
 
-
 #[cfg(feature = "qa")]
 pub fn crash_child() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mode = args.get(1).map(String::as_str).unwrap_or("missing");
     let path = PathBuf::from(args.get(2).cloned().unwrap_or_default());
     let root = PathBuf::from(args.get(3).cloned().unwrap_or_default());
-    let incarnation: u64 = args.get(4).and_then(|value| value.parse().ok()).unwrap_or(51);
+    let incarnation: u64 = args
+        .get(4)
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(51);
     let marker = path.with_extension("marker");
     let fail = |message: String| -> ! {
         eprintln!("v4 crash child {mode}: {message}");
@@ -3678,8 +3792,8 @@ pub fn crash_child() {
             crate::sqlite_storage::save(&path, &root, &store).unwrap_or_else(|error| fail(error));
         }
         "after-commit" => {
-            let mut database = SqliteV4::open(&path, &root, incarnation)
-                .unwrap_or_else(|error| fail(error));
+            let mut database =
+                SqliteV4::open(&path, &root, incarnation).unwrap_or_else(|error| fail(error));
             let store = database.load_store().unwrap_or_else(|error| fail(error));
             let group = crash_group(&store, database.durable_generation().unwrap_or(0));
             database
@@ -3690,8 +3804,8 @@ pub fn crash_child() {
             std::process::abort();
         }
         "retry-same" => {
-            let mut database = SqliteV4::open(&path, &root, incarnation)
-                .unwrap_or_else(|error| fail(error));
+            let mut database =
+                SqliteV4::open(&path, &root, incarnation).unwrap_or_else(|error| fail(error));
             let store = database.load_store().unwrap_or_else(|error| fail(error));
             let group = crash_group(&store, 0);
             match database.commit_group(&group) {
@@ -3702,15 +3816,21 @@ pub fn crash_child() {
             }
         }
         "mid-group" => {
-            let mut database = SqliteV4::open(&path, &root, incarnation)
-                .unwrap_or_else(|error| fail(error));
+            let mut database =
+                SqliteV4::open(&path, &root, incarnation).unwrap_or_else(|error| fail(error));
             let store = database.load_store().unwrap_or_else(|error| fail(error));
             let group = crash_group(&store, database.durable_generation().unwrap_or(0));
             let _ = database.commit_group_with_fault(&group, Fault::CrashMidGroup);
             fail("mid-group fault returned instead of aborting".into());
         }
         "migration-crash" => {
-            let _ = migrate_inner(&path, &root, incarnation, MigrationFault::CrashAfterCheckpoint, false);
+            let _ = migrate_inner(
+                &path,
+                &root,
+                incarnation,
+                MigrationFault::CrashAfterCheckpoint,
+                false,
+            );
             fail("migration crash fault returned instead of aborting".into());
         }
         other => fail(format!("unknown mode {other}")),
@@ -3727,11 +3847,9 @@ fn crash_fixture(root: &Path) -> Store {
     store.project_at_mut(0).unwrap().directory = directory.to_string_lossy().into_owned();
     store.set_default_model("qa/model".into());
     store.research_config_mut().models = std::array::from_fn(|_| "qa/model".into());
-    let template = crate::automation_execution::build_quick_template(
-        "Check one value.",
-        "One answer.",
-    )
-    .unwrap();
+    let template =
+        crate::automation_execution::build_quick_template("Check one value.", "One answer.")
+            .unwrap();
     let automation = store
         .create_automation_draft(
             1,

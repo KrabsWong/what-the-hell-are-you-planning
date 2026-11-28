@@ -65,9 +65,7 @@ impl TaskApp {
     ) -> crate::task_edit_app::TaskSaveOutcome {
         use crate::task_edit_app::TaskSaveOutcome;
         if self.research_save_impact.is_some() {
-            return TaskSaveOutcome::Rejected(
-                "Review the pending save impact first.".into(),
-            );
+            return TaskSaveOutcome::Rejected("Review the pending save impact first.".into());
         }
         self.pending_task_edit = None;
         #[cfg(feature = "qa")]
@@ -131,16 +129,14 @@ impl TaskApp {
             if let Some(impact) = fresh.impact().cloned()
                 && Some(&impact) != Some(&pending.impact)
             {
-                self.pending_material_edit = Some(
-                    crate::material_app::PendingMaterialEdit {
-                        prepared: fresh.clone(),
-                        root: self
-                            .pending_material_edit
-                            .as_ref()
-                            .map(|pending| pending.root.clone())
-                            .unwrap_or_default(),
-                    },
-                );
+                self.pending_material_edit = Some(crate::material_app::PendingMaterialEdit {
+                    prepared: fresh.clone(),
+                    root: self
+                        .pending_material_edit
+                        .as_ref()
+                        .map(|pending| pending.root.clone())
+                        .unwrap_or_default(),
+                });
                 self.research_save_impact = Some(PendingResearchSave {
                     task: fresh.id(),
                     impact,
@@ -436,7 +432,12 @@ impl TaskApp {
             self.previous_version_text = None;
             return;
         };
-        let Some(run_ref) = self.store.runs().iter().find(|candidate| candidate.id == run) else {
+        let Some(run_ref) = self
+            .store
+            .runs()
+            .iter()
+            .find(|candidate| candidate.id == run)
+        else {
             self.previous_version_text = None;
             return;
         };
@@ -957,7 +958,7 @@ mod tests {
         store.task_mut(steps[0]).unwrap().title = "Collect A revised".into();
         store.reconcile_goal_approvals();
         assert!(!store.goal_execution_approved(goal));
-        store.set_stage(goal, Stage::Planned).unwrap();
+        store.set_stage(goal, Stage::InProgress).unwrap();
         assert!(store.goal_execution_approved(goal));
 
         let (entry, run) = version_entry(&store, steps[0], old_run.id);

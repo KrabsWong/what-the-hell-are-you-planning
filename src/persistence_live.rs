@@ -79,10 +79,7 @@ pub(crate) struct RecoveryPlan {
 /// Durable emergency copy of accepted-but-unacknowledged live changes. Used
 /// only when an application quit bypasses the graceful receipt drain; startup
 /// reapplies it before normal hydration so no edit is silently lost.
-pub(crate) fn write_recovery(
-    path: &Path,
-    plan: &RecoveryPlan,
-) -> Result<(), String> {
+pub(crate) fn write_recovery(path: &Path, plan: &RecoveryPlan) -> Result<(), String> {
     if plan.groups.iter().all(|group| {
         group.changes.is_empty() && group.metadata.is_empty() && group.effects.is_empty()
     }) {
@@ -195,19 +192,15 @@ fn apply_recovery(
     let Some(plan) = read_recovery(path)? else {
         return Ok(None);
     };
-    if !plan.snapshot_id.is_empty()
-        && store.recovery_snapshot() == &plan.snapshot_id
-    {
+    if !plan.snapshot_id.is_empty() && store.recovery_snapshot() == &plan.snapshot_id {
         // A crash after COMMIT but before sidecar deletion: the marker is
         // durable, so nothing is replayed.
         let _ = clear_recovery(path);
         return Ok(None);
     }
     if plan.incarnation != incarnation {
-        let target = recovery_sidecar(path).with_extension(format!(
-            "foreign-{}.json",
-            plan.incarnation
-        ));
+        let target =
+            recovery_sidecar(path).with_extension(format!("foreign-{}.json", plan.incarnation));
         let _ = std::fs::rename(recovery_sidecar(path), &target);
         return Ok(Some(format!(
             "Live recovery belongs to workspace incarnation {} but this workspace is {}; the file was retained at {} and was not replayed.",
@@ -288,8 +281,7 @@ pub(crate) fn build_recovery_plan(
     let mut latest_changes = std::collections::HashMap::new();
     let mut latest_metadata = std::collections::HashMap::new();
     for group in accepted {
-        let intent_hash = crate::sqlite_v4::SqliteV4::group_intent_hash(&group)
-            .unwrap_or_default();
+        let intent_hash = crate::sqlite_v4::SqliteV4::group_intent_hash(&group).unwrap_or_default();
         for change in group.changes() {
             latest_changes.insert(change.key(), change.clone());
         }
@@ -336,7 +328,11 @@ pub(crate) fn build_recovery_plan(
 /// at generation zero with the same incarnation sidecar.
 pub(crate) fn create_new(storage: &Storage) -> Result<Option<LiveStartup>, String> {
     let path = storage.path();
-    if !path.extension().is_some_and(|extension| extension == "sqlite3") || path.exists() {
+    if !path
+        .extension()
+        .is_some_and(|extension| extension == "sqlite3")
+        || path.exists()
+    {
         return Ok(None);
     }
     let root = storage.workspace_root().to_path_buf();
@@ -365,7 +361,11 @@ pub(crate) fn select_existing_reporting(
     progress: &dyn Fn(&'static str),
 ) -> Result<Option<LiveStartup>, String> {
     let path = storage.path();
-    if !path.extension().is_some_and(|extension| extension == "sqlite3") || !path.is_file() {
+    if !path
+        .extension()
+        .is_some_and(|extension| extension == "sqlite3")
+        || !path.is_file()
+    {
         return Ok(None);
     }
     let root = storage.workspace_root().to_path_buf();
@@ -467,7 +467,10 @@ mod tests {
             .expect("v4 startup loads exactly one verified store");
         assert_eq!(loaded, &store);
         assert!(selected.recovery_warning.is_none());
-        assert_eq!(read_sidecar(&sidecar(&selected.path)).unwrap(), Some(incarnation));
+        assert_eq!(
+            read_sidecar(&sidecar(&selected.path)).unwrap(),
+            Some(incarnation)
+        );
     }
 
     #[test]
@@ -489,7 +492,8 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    fn temp_workspace(name: &str) -> (PathBuf, PathBuf) {        let root = std::env::temp_dir().join(format!(
+    fn temp_workspace(name: &str) -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!(
             "t14-live-{name}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
@@ -519,12 +523,7 @@ mod tests {
         }
     }
 
-    fn accepted(
-        generation: u64,
-        hash: String,
-        store: &Store,
-        title: &str,
-    ) -> RecoveryGroup {
+    fn accepted(generation: u64, hash: String, store: &Store, title: &str) -> RecoveryGroup {
         RecoveryGroup {
             generation,
             intent_hash: hash,
@@ -574,7 +573,10 @@ mod tests {
         assert_eq!(loaded.task(1).unwrap().title, "Recovered title");
         assert_eq!(loaded.tasks().len(), store.tasks().len());
         assert_eq!(loaded.default_model(), store.default_model());
-        assert!(loaded.has_tracked_changes(), "recovery remains to be committed");
+        assert!(
+            loaded.has_tracked_changes(),
+            "recovery remains to be committed"
+        );
     }
 
     #[test]
@@ -595,10 +597,12 @@ mod tests {
         let loaded = selected.migrated_store.as_ref().unwrap();
         assert_eq!(loaded.task(1).unwrap().title, store.task(1).unwrap().title);
         assert!(!recovery_sidecar(&path).exists());
-        assert!(std::fs::read_dir(&root)
-            .unwrap()
-            .flatten()
-            .any(|entry| entry.file_name().to_string_lossy().contains("foreign-")));
+        assert!(
+            std::fs::read_dir(&root)
+                .unwrap()
+                .flatten()
+                .any(|entry| entry.file_name().to_string_lossy().contains("foreign-"))
+        );
     }
 
     #[test]
@@ -608,8 +612,12 @@ mod tests {
         let incarnation = 8_003;
         crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, incarnation, &store).unwrap();
         let mut journal = crate::persistence_journal::ChangeJournal::new(incarnation);
-        journal.stage(vec![changed_task(&store, "Ignored")]).unwrap();
-        journal.stage(vec![changed_task(&store, "Ignored")]).unwrap();
+        journal
+            .stage(vec![changed_task(&store, "Ignored")])
+            .unwrap();
+        journal
+            .stage(vec![changed_task(&store, "Ignored")])
+            .unwrap();
         // Generation 3 cannot follow durable 0 without generations 1 and 2.
         write_recovery(
             &path,
@@ -655,7 +663,10 @@ mod tests {
         let loaded = selected.migrated_store.as_ref().unwrap();
         assert_eq!(loaded.task(1).unwrap().title, "Committed title");
         assert_eq!(loaded.tasks().len(), store.tasks().len());
-        assert!(!loaded.has_tracked_changes(), "committed group is already durable");
+        assert!(
+            !loaded.has_tracked_changes(),
+            "committed group is already durable"
+        );
     }
 
     #[test]
@@ -735,13 +746,7 @@ mod tests {
             metadata: Vec::new(),
             epoch: 1,
         };
-        let plan = build_recovery_plan(
-            incarnation,
-            1,
-            "snap".into(),
-            vec![group],
-            duplicate,
-        );
+        let plan = build_recovery_plan(incarnation, 1, "snap".into(), vec![group], duplicate);
         assert_eq!(plan.groups.len(), 1);
         assert!(plan.groups.iter().all(|group| group.generation > 0));
     }
@@ -757,13 +762,7 @@ mod tests {
             metadata: Vec::new(),
             epoch: 2,
         };
-        let plan = build_recovery_plan(
-            incarnation,
-            1,
-            "snap".into(),
-            vec![group],
-            tail,
-        );
+        let plan = build_recovery_plan(incarnation, 1, "snap".into(), vec![group], tail);
         assert_eq!(plan.groups.len(), 2);
         assert_eq!(plan.groups[1].generation, 0);
         assert_eq!(plan.groups[1].changes.len(), 1);

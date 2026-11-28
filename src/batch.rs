@@ -31,8 +31,11 @@ pub enum ExecutionTopic {
 
 impl Store {
     pub fn execution_topic(&self, task: u64) -> ExecutionTopic {
-        self.task_topic(task).map(|topic| ExecutionTopic::Topic(topic.id))
-            .unwrap_or_else(|| ExecutionTopic::Task(self.owning_research_goal(task).unwrap_or(task)))
+        self.task_topic(task)
+            .map(|topic| ExecutionTopic::Topic(topic.id))
+            .unwrap_or_else(|| {
+                ExecutionTopic::Task(self.owning_research_goal(task).unwrap_or(task))
+            })
     }
 }
 
@@ -41,40 +44,67 @@ impl TodoBatch {
         let mut topics = vec![];
         for item in &self.items {
             let topic = store.execution_topic(*item);
-            if !topics.contains(&topic) && self.items.iter().any(|id|
-                self.contains_pending(*id) && store.execution_topic(*id) == topic) { topics.push(topic); }
+            if !topics.contains(&topic)
+                && self
+                    .items
+                    .iter()
+                    .any(|id| self.contains_pending(*id) && store.execution_topic(*id) == topic)
+            {
+                topics.push(topic);
+            }
         }
         topics
     }
 
     pub fn current_items(&self, store: &Store) -> Vec<u64> {
-        let Some(topic) = self.pending_topics(store).first().copied() else { return vec![]; };
-        self.items.iter().copied().filter(|item|
-            !self.done_items.contains(item) && !self.failed_items.contains(item)
-                && store.execution_topic(*item) == topic).collect()
+        let Some(topic) = self.pending_topics(store).first().copied() else {
+            return vec![];
+        };
+        self.items
+            .iter()
+            .copied()
+            .filter(|item| {
+                !self.done_items.contains(item)
+                    && !self.failed_items.contains(item)
+                    && store.execution_topic(*item) == topic
+            })
+            .collect()
     }
 
     pub fn contains_pending(&self, goal: u64) -> bool {
-        self.items.contains(&goal) && !self.done_items.contains(&goal) && !self.failed_items.contains(&goal)
+        self.items.contains(&goal)
+            && !self.done_items.contains(&goal)
+            && !self.failed_items.contains(&goal)
     }
 }
 
 impl Store {
     pub fn todo_batch_items(&self, project: u64) -> Vec<u64> {
-        self.tasks().iter().filter(|task| {
-            task.project_id == project && !self.task_is_archived(task.id)
-                && task.automation_id.is_none()
-                && task.research.as_ref().is_some_and(|r| r.kind == ResearchKind::Goal)
-                && matches!(task.stage, Stage::Planned | Stage::InProgress)
-                && self.goal_execution_approved(task.id)
-                && (!self.has_research_plan(task.id) || self.next_research_task(task.id) != Ok(None))
-        }).map(|task| task.id).collect()
+        self.tasks()
+            .iter()
+            .filter(|task| {
+                task.project_id == project
+                    && !self.task_is_archived(task.id)
+                    && task.automation_id.is_none()
+                    && task
+                        .research
+                        .as_ref()
+                        .is_some_and(|r| r.kind == ResearchKind::Goal)
+                    && matches!(task.stage, Stage::Backlog | Stage::InProgress)
+                    && self.goal_execution_approved(task.id)
+                    && (!self.has_research_plan(task.id)
+                        || self.next_research_task(task.id) != Ok(None))
+            })
+            .map(|task| task.id)
+            .collect()
     }
 
     pub fn goal_tasks_complete(&self, goal: u64) -> bool {
         let children = self.research_children(goal);
         self.has_research_plan(goal)
-            && children.iter().all(|id| self.task(*id).is_some_and(|t| t.stage == Stage::Done))
+            && children
+                .iter()
+                .all(|id| self.task(*id).is_some_and(|t| t.stage == Stage::Done))
             && self.research_results_current(&children)
     }
 
@@ -84,19 +114,33 @@ impl Store {
             return Err("Restore the archived topic or goal before executing.".into());
         }
         if !self.goal_execution_approved(goal) {
-            return Err("Review this goal's complete plan and move it to Todo before executing.".into());
+            return Err("Review and run the research goal from its detail page.".into());
         }
         let children = self.research_children(goal);
-        if children.is_empty() { return Ok(vec![goal]); }
-        Ok(children.into_iter().filter(|id| {
-            let task = self.task(*id).unwrap();
-            task.stage != Stage::Cancelled
-                && !self.research_result_available_or_pending(*id)
-                && task.research.as_ref().unwrap().depends_on.iter().all(|dep| {
-                    self.task(*dep).is_some_and(|t| !t.archived && t.stage == Stage::Done && t.research.as_ref().is_some_and(|r| r.goal_id == goal))
-                        && self.research_result(*dep).is_some()
-                })
-        }).collect())
+        if children.is_empty() {
+            return Ok(vec![goal]);
+        }
+        Ok(children
+            .into_iter()
+            .filter(|id| {
+                let task = self.task(*id).unwrap();
+                task.stage != Stage::Cancelled
+                    && !self.research_result_available_or_pending(*id)
+                    && task
+                        .research
+                        .as_ref()
+                        .unwrap()
+                        .depends_on
+                        .iter()
+                        .all(|dep| {
+                            self.task(*dep).is_some_and(|t| {
+                                !t.archived
+                                    && t.stage == Stage::Done
+                                    && t.research.as_ref().is_some_and(|r| r.goal_id == goal)
+                            }) && self.research_result(*dep).is_some()
+                        })
+            })
+            .collect())
     }
 
     pub fn next_todo_batch_task(&self, project: u64, item: u64) -> Result<Option<u64>, String> {
@@ -104,14 +148,21 @@ impl Store {
         if self.task_is_archived(item) || task.project_id != project {
             return Err("The queued goal is no longer available in this project.".into());
         }
-        if self.goal_tasks_complete(item) { return Ok(None); }
-        if !matches!(task.stage, Stage::Planned | Stage::InProgress) {
-            return Err("Move the goal to Todo before continuing.".into());
+        if self.goal_tasks_complete(item) {
+            return Ok(None);
         }
-        self.ready_research_tasks(item)?.first().copied().map(Some)
-            .ok_or_else(|| "Waiting for research dependencies or a blocked step. Review the goal's progress.".into())
+        if !matches!(task.stage, Stage::Backlog | Stage::InProgress) {
+            return Err("Review this goal before continuing.".into());
+        }
+        self.ready_research_tasks(item)?
+            .first()
+            .copied()
+            .map(Some)
+            .ok_or_else(|| {
+                "Waiting for research dependencies or a blocked step. Review the goal's progress."
+                    .into()
+            })
     }
-
 }
 
 #[cfg(test)]
@@ -122,14 +173,30 @@ mod tests {
         let mut store = Store::empty();
         let a = store.create_topic(1, "Topic A").unwrap();
         let b = store.create_topic(1, "Topic B").unwrap();
-        let a1 = store.create_research_goal_in_topic("A1".into(), "Scope".into(), 1, Some(a)).unwrap();
-        let b1 = store.create_research_goal_in_topic("B1".into(), "Scope".into(), 1, Some(b)).unwrap();
-        let a2 = store.create_research_goal_in_topic("A2".into(), "Scope".into(), 1, Some(a)).unwrap();
+        let a1 = store
+            .create_research_goal_in_topic("A1".into(), "Scope".into(), 1, Some(a))
+            .unwrap();
+        let b1 = store
+            .create_research_goal_in_topic("B1".into(), "Scope".into(), 1, Some(b))
+            .unwrap();
+        let a2 = store
+            .create_research_goal_in_topic("A2".into(), "Scope".into(), 1, Some(a))
+            .unwrap();
         let mut batch = TodoBatch {
-            project_id: 1, items: vec![a1, b1, a2], completed: 0, runs_completed: 0,
-            state: BatchState::Running, run_ids: Default::default(), done_items: vec![], failed_items: vec![], failed_tasks: vec![],
+            project_id: 1,
+            items: vec![a1, b1, a2],
+            completed: 0,
+            runs_completed: 0,
+            state: BatchState::Running,
+            run_ids: Default::default(),
+            done_items: vec![],
+            failed_items: vec![],
+            failed_tasks: vec![],
         };
-        assert_eq!(batch.pending_topics(&store), vec![ExecutionTopic::Topic(a), ExecutionTopic::Topic(b)]);
+        assert_eq!(
+            batch.pending_topics(&store),
+            vec![ExecutionTopic::Topic(a), ExecutionTopic::Topic(b)]
+        );
         assert_eq!(batch.current_items(&store), vec![a1, a2]);
         batch.done_items.push(a1);
         assert_eq!(batch.current_items(&store), vec![a2]);
@@ -163,7 +230,9 @@ mod tests {
     fn project_snapshot_excludes_backlog_and_deduplicates_steps() {
         let (mut s, p, goal) = setup();
         let steps = s.apply_research_plan(goal, PLAN).unwrap();
-        let ordinary = s.create_task("Ordinary", p, Stage::Planned, None).unwrap();
+        let ordinary = s
+            .create_task("Ordinary", p, Stage::InProgress, None)
+            .unwrap();
         let backlog = s
             .create_research_goal("Backlog".into(), "Scope".into(), p)
             .unwrap();
@@ -176,7 +245,7 @@ mod tests {
             .create_research_goal("Automation period".into(), "Scope".into(), p)
             .unwrap();
         s.task_mut(automation).unwrap().automation_id = Some(1);
-        s.task_mut(automation).unwrap().stage = Stage::Planned;
+        s.task_mut(automation).unwrap().stage = Stage::InProgress;
         assert_eq!(s.todo_batch_items(p), vec![goal]);
         assert!(s.next_todo_batch_task(p, ordinary).is_err());
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(steps[0])));
@@ -186,16 +255,18 @@ mod tests {
         let (mut s, p, goal) = setup();
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(goal)));
         let ids = s.apply_research_plan(goal, PLAN).unwrap();
-        let legacy = s.create_task("Legacy subtask", p, Stage::Planned, Some(goal)).unwrap();
+        let legacy = s
+            .create_task("Legacy subtask", p, Stage::InProgress, Some(goal))
+            .unwrap();
         for id in &ids {
             complete(&mut s, *id);
         }
         s.sync_goal_progress(goal);
         assert_eq!(s.task(goal).unwrap().stage, Stage::Done);
-        assert_eq!(s.task(legacy).unwrap().stage, Stage::Planned);
+        assert_eq!(s.task(legacy).unwrap().stage, Stage::InProgress);
         assert!(s.todo_batch_items(p).is_empty());
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(None));
-        s.set_stage(goal, Stage::Planned).unwrap();
+        s.set_stage(goal, Stage::InProgress).unwrap();
         s.add_comment(ids[1], "New information").unwrap();
         assert_eq!(s.todo_batch_items(p), vec![goal]);
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(ids[1])));
@@ -209,7 +280,7 @@ mod tests {
         assert_eq!(s.next_todo_batch_task(p, goal), Ok(Some(ids[0])));
         s.task_mut(goal).unwrap().stage = Stage::Backlog;
         assert!(s.next_todo_batch_task(p, goal).is_err());
-        s.task_mut(goal).unwrap().stage = Stage::Planned;
+        s.task_mut(goal).unwrap().stage = Stage::InProgress;
         s.task_mut(goal).unwrap().archived = true;
         assert!(s.next_todo_batch_task(p, goal).is_err());
     }
@@ -220,7 +291,7 @@ mod tests {
         s.task_mut(goal).unwrap().stage = Stage::InProgress;
         assert_eq!(s.todo_batch_items(p), vec![goal]);
         assert!(s.next_todo_batch_task(p, ids[0]).is_err());
-        s.task_mut(goal).unwrap().stage = Stage::Planned;
+        s.task_mut(goal).unwrap().stage = Stage::InProgress;
         assert_eq!(s.todo_batch_items(p), vec![goal]);
         assert_eq!(s.ready_research_tasks(goal).unwrap(), vec![ids[0]]);
         complete(&mut s, ids[0]);

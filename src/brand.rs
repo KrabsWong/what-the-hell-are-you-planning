@@ -335,7 +335,11 @@ pub(crate) fn brand_phase(elapsed_seconds: f32) -> f32 {
 /// Phase drawn when motion is pinned (reduce-motion or the QA static
 /// diagnostic). A stable phase keeps incidental rerenders visually identical.
 pub(crate) fn brand_render_phase(elapsed_seconds: f32, pinned: bool) -> f32 {
-    if pinned { 0.0 } else { brand_phase(elapsed_seconds) }
+    if pinned {
+        0.0
+    } else {
+        brand_phase(elapsed_seconds)
+    }
 }
 
 pub(crate) fn brand_frame_is_static(elapsed_seconds: f32) -> bool {
@@ -369,13 +373,13 @@ pub(crate) fn sidebar_logo_at(color: u32, phase: f32) -> AnyElement {
 
 #[cfg(test)]
 mod overlay_animation_tests {
-    use super::{
-        brand_frame_is_static, brand_next_motion_wait, brand_phase, brand_render_phase,
-    };
+    use super::{brand_frame_is_static, brand_next_motion_wait, brand_phase, brand_render_phase};
 
     #[test]
     fn static_segments_and_motion_starts_are_exact() {
-        for static_at in [0.0, 0.2, 0.479, 2.0, 2.2, 2.48, 2.7, 2.959, 4.48, 4.9, 4.959] {
+        for static_at in [
+            0.0, 0.2, 0.479, 2.0, 2.2, 2.48, 2.7, 2.959, 4.48, 4.9, 4.959,
+        ] {
             assert!(brand_frame_is_static(static_at), "{static_at}");
         }
         for moving_at in [0.481, 0.7, 1.9, 2.961, 3.5, 4.4] {

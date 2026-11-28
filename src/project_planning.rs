@@ -120,10 +120,7 @@ impl Store {
             self.research_model(ResearchKind::Goal),
         );
         if !self.valid_agent_model(&agent, &model) {
-            return Err(
-                "Choose an agent and model for Plan in Settings."
-                    .into(),
-            );
+            return Err("Choose an agent and model for Plan in Settings.".into());
         }
         if project.directory.is_empty() || !std::path::Path::new(&project.directory).is_dir() {
             return Err(
@@ -171,7 +168,7 @@ impl Store {
             return Err("Project context is too large. Shorten its scope or existing task titles before planning.".into());
         }
         Ok(AgentRun {
-        automation_occurrence_id: None,
+            automation_occurrence_id: None,
             planning_owner: None,
             deadline_at: None,
             auto_retry_attempt: 0,
@@ -182,7 +179,9 @@ impl Store {
             task_title: format!("Project goals · {}", project.name),
             directory: project.directory.clone(),
             prompt,
-            queued_at: String::new(), workspace_source: None, started_at: crate::opencode::timestamp(),
+            queued_at: String::new(),
+            workspace_source: None,
+            started_at: crate::opencode::timestamp(),
             ended_at: None,
             session_id: None,
             exit_code: None,
@@ -273,7 +272,8 @@ mod tests {
         let mut store = Store::empty();
         store.project_at_mut(0).unwrap().name = "半导体行业研究".into();
         store.project_at_mut(0).unwrap().research_brief = "覆盖全球市场，重点关注未来一年。".into();
-        store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+        store.project_at_mut(0).unwrap().directory =
+            std::env::temp_dir().to_string_lossy().into_owned();
         store.research_config_mut().models[0] = "test/project-planner".into();
         store
     }
@@ -344,7 +344,10 @@ mod tests {
             assert_eq!(research.kind, ResearchKind::Goal);
             assert_eq!(research.goal_id, id);
             assert!(research.requires_approval);
-            assert!(task.description.contains(&store.projects()[0].research_brief));
+            assert!(
+                task.description
+                    .contains(&store.projects()[0].research_brief)
+            );
             assert!(research.depends_on.is_empty());
         }
         let restored: Store =
@@ -370,11 +373,13 @@ mod tests {
         assert!(run.prompt.contains("All topics will enter Backlog"));
         assert!(run.prompt.contains(crate::research::RESEARCH_TYPE_GUIDANCE));
         assert!(run.prompt.contains(crate::research::RESEARCH_PLAN_GUIDANCE));
-        assert!(run.prompt.contains(crate::research::REPORT_DELIVERY_GUIDANCE));
         assert!(
-            run.prompt.contains(
-                "Write every generated field and all reader-facing output in English"
-            )
+            run.prompt
+                .contains(crate::research::REPORT_DELIVERY_GUIDANCE)
+        );
+        assert!(
+            run.prompt
+                .contains("Write every generated field and all reader-facing output in English")
         );
         assert_eq!(
             run.input_signature,
@@ -422,7 +427,11 @@ mod tests {
     fn project_signature_tracks_inputs_and_existing_titles() {
         let mut store = workspace();
         let before = store.project_plan_signature(1).unwrap();
-        store.project_at_mut(0).unwrap().research_brief.push_str(" 只看美股。");
+        store
+            .project_at_mut(0)
+            .unwrap()
+            .research_brief
+            .push_str(" 只看美股。");
         assert_ne!(before, store.project_plan_signature(1).unwrap());
         let before = store.project_plan_signature(1).unwrap();
         let id = store

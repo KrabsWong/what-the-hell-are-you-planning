@@ -3,10 +3,10 @@
 //! This module chooses what a result surface may show. It never changes execution,
 //! scheduling, navigation or stored report text. Raw output remains available only
 //! through technical diagnostics.
-use std::collections::HashMap;
 use crate::automation::{AutomationOccurrence, OccurrenceStatus};
 use crate::domain::{AgentRun, Stage, Store};
 use crate::research::{self, ResearchKind, Source};
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResultKind {
@@ -185,7 +185,11 @@ impl EvidenceQuality {
     pub fn is_reader_body(self) -> bool {
         matches!(
             self,
-            Self::Complete | Self::Partial | Self::Blocked | Self::UnverifiedLegacy | Self::PlainText
+            Self::Complete
+                | Self::Partial
+                | Self::Blocked
+                | Self::UnverifiedLegacy
+                | Self::PlainText
         )
     }
 }
@@ -289,7 +293,11 @@ impl ResultPresentation {
         self.reports
             .iter()
             .find(|report| report.presentation.has_final_report)
-            .or_else(|| self.reports.iter().find(|report| report.presentation.run_id.is_some()))
+            .or_else(|| {
+                self.reports
+                    .iter()
+                    .find(|report| report.presentation.run_id.is_some())
+            })
             .and_then(|report| report.presentation.run_id)
             .or(self.run_id)
             .or_else(|| self.progress.first().map(|progress| progress.run_id))
@@ -405,11 +413,7 @@ pub(crate) fn split_report_appendix(markdown: &str) -> (&str, Option<&str>) {
             .chars()
             .take_while(|character| *character == '#')
             .count();
-        if (1..=3).contains(&hashes)
-            && trimmed
-                .chars()
-                .nth(hashes)
-                .is_some_and(char::is_whitespace)
+        if (1..=3).contains(&hashes) && trimmed.chars().nth(hashes).is_some_and(char::is_whitespace)
         {
             let heading = trimmed[hashes..].trim();
             if is_appendix_heading(heading) && offset > 0 {
@@ -516,11 +520,7 @@ fn runs_for<'a>(
         .filter_map(move |position| store.runs().get(position))
 }
 
-fn run_by_id<'a>(
-    store: &'a Store,
-    index: Option<&RunIndex>,
-    id: u64,
-) -> Option<&'a AgentRun> {
+fn run_by_id<'a>(store: &'a Store, index: Option<&RunIndex>, id: u64) -> Option<&'a AgentRun> {
     match index {
         Some(index) => index.run(store, id),
         None => store.runs().iter().find(|run| run.id == id),
@@ -535,17 +535,12 @@ pub fn present_run_indexed(store: &Store, run: &AgentRun, index: &RunIndex) -> R
     present_run_with(store, run, Some(index))
 }
 
-fn present_run_with(
-    store: &Store,
-    run: &AgentRun,
-    index: Option<&RunIndex>,
-) -> ResultPresentation {
-    let planning =
-        run.project_plan.is_some() || run.research_kind == Some(ResearchKind::Goal);
+fn present_run_with(store: &Store, run: &AgentRun, index: Option<&RunIndex>) -> ResultPresentation {
+    let planning = run.project_plan.is_some() || run.research_kind == Some(ResearchKind::Goal);
     let attempt = AttemptStatus::from_run_status(&run.status);
-    let step_label = store.task(run.task_id).map(|task| {
-        format!("{} · {}", store.identifier(task), task.title)
-    });
+    let step_label = store
+        .task(run.task_id)
+        .map(|task| format!("{} · {}", store.identifier(task), task.title));
 
     if planning {
         return ResultPresentation {
@@ -636,9 +631,9 @@ fn present_run_with(
             Some(signature) => !run.input_signature.is_empty() && signature != run.input_signature,
             // Archived or removed context is retained as history; a live task with
             // unavailable approval/context cannot prove the old result current.
-            None => store.task(run.task_id).is_some_and(|task| {
-                !task.archived && !matches!(task.stage, Stage::Cancelled)
-            }),
+            None => store
+                .task(run.task_id)
+                .is_some_and(|task| !task.archived && !matches!(task.stage, Stage::Cancelled)),
         };
     freshness.legacy_contract = classified.quality == EvidenceQuality::UnverifiedLegacy;
     freshness.regenerating = regenerating;
@@ -655,14 +650,10 @@ fn present_run_with(
         {
             ResultKind::FinalReport
         }
-        ResearchKind::Collect | ResearchKind::Analyze
-            if classified.quality.is_reader_body() =>
-        {
+        ResearchKind::Collect | ResearchKind::Analyze if classified.quality.is_reader_body() => {
             ResultKind::IntermediateEvidence
         }
-        _ if attempt.is_active() && !run.output.trim().is_empty() => {
-            ResultKind::LiveProgress
-        }
+        _ if attempt.is_active() && !run.output.trim().is_empty() => ResultKind::LiveProgress,
         _ => ResultKind::None,
     };
     let mut presentation = ResultPresentation {
@@ -886,9 +877,8 @@ fn report_envelope(text: &str, kind: ResearchKind) -> Option<Result<research::Re
     match research::response_json(trimmed) {
         Ok(json) => {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
-                return envelope_candidate(trimmed).then(|| {
-                    Err("The saved report envelope is not valid JSON.".into())
-                });
+                return envelope_candidate(trimmed)
+                    .then(|| Err("The saved report envelope is not valid JSON.".into()));
             };
             let Some(object) = value.as_object() else {
                 return None;
@@ -898,8 +888,9 @@ fn report_envelope(text: &str, kind: ResearchKind) -> Option<Result<research::Re
             }
             Some(research::parse_report(trimmed, kind))
         }
-        Err(error) => envelope_candidate(trimmed)
-            .then_some(Err(format!("The saved report envelope is incomplete: {error}"))),
+        Err(error) => envelope_candidate(trimmed).then_some(Err(format!(
+            "The saved report envelope is incomplete: {error}"
+        ))),
     }
 }
 
@@ -909,10 +900,7 @@ fn envelope_candidate(text: &str) -> bool {
 
 /// Automation period presentation. A period is a complete answer only when every
 /// required goal has its own validated final report.
-pub fn present_occurrence(
-    store: &Store,
-    occurrence: &AutomationOccurrence,
-) -> ResultPresentation {
+pub fn present_occurrence(store: &Store, occurrence: &AutomationOccurrence) -> ResultPresentation {
     present_occurrence_with(store, occurrence, None)
 }
 
@@ -930,13 +918,13 @@ fn present_occurrence_with(
     index: Option<&RunIndex>,
 ) -> ResultPresentation {
     let definition = store.automation(occurrence.automation_id);
-    let previous_version = definition
-        .is_some_and(|definition| definition.version != occurrence.definition_version);
+    let previous_version =
+        definition.is_some_and(|definition| definition.version != occurrence.definition_version);
     let regenerating = occurrence.status == OccurrenceStatus::Succeeded
         && runs_for(store, index, occurrence.id).any(|run| {
-                run.research_kind == Some(ResearchKind::Advise)
-                    && AttemptStatus::from_run_status(&run.status).is_active()
-            });
+            run.research_kind == Some(ResearchKind::Advise)
+                && AttemptStatus::from_run_status(&run.status).is_active()
+        });
     let attempt = AttemptStatus::from_occurrence_status(occurrence.status);
 
     let goal_ids: Vec<u64> = if occurrence.research_goal_ids.is_empty() {
@@ -1081,9 +1069,8 @@ fn present_occurrence_with(
         && !reports
             .iter()
             .any(|report| report.presentation.run_id == Some(final_id))
-        && let Some(run) = run_by_id(store, index, final_id).filter(|run| {
-            run.automation_occurrence_id == Some(occurrence.id)
-        })
+        && let Some(run) = run_by_id(store, index, final_id)
+            .filter(|run| run.automation_occurrence_id == Some(occurrence.id))
     {
         let mut presentation = present_run_with(store, run, index);
         presentation.freshness.merge(Freshness {
@@ -1162,8 +1149,7 @@ fn present_occurrence_with(
     } else {
         (reader_markdown, sources)
     };
-    let notice = (quality == EvidenceQuality::Partial)
-        .then_some(research::EVIDENCE_GAP_NOTICE);
+    let notice = (quality == EvidenceQuality::Partial).then_some(research::EVIDENCE_GAP_NOTICE);
 
     ResultPresentation {
         kind,
@@ -1435,8 +1421,20 @@ mod tests {
     fn running_complete_envelope_stays_progress() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], Some(1), "Succeeded", "Collected evidence");
-        add_run(&mut store, steps[1], Some(1), "Succeeded", "Analyzed findings");
+        add_run(
+            &mut store,
+            steps[0],
+            Some(1),
+            "Succeeded",
+            "Collected evidence",
+        );
+        add_run(
+            &mut store,
+            steps[1],
+            Some(1),
+            "Succeeded",
+            "Analyzed findings",
+        );
         let running = add_run(
             &mut store,
             steps[2],
@@ -1444,20 +1442,38 @@ mod tests {
             "Running",
             r#"{"status":"complete","report":"Premature answer","sources":[]}"#,
         );
-        let presentation = present_run(&store, store.runs().iter().find(|run| run.id == running).unwrap());
+        let presentation = present_run(
+            &store,
+            store.runs().iter().find(|run| run.id == running).unwrap(),
+        );
         assert_eq!(presentation.kind, ResultKind::LiveProgress);
         assert_eq!(presentation.quality, EvidenceQuality::NotValidated);
         assert!(presentation.reader_markdown.is_empty());
         assert!(!presentation.has_final_report);
-        assert_eq!(presentation.progress[0].text, r#"{"status":"complete","report":"Premature answer","sources":[]}"#);
+        assert_eq!(
+            presentation.progress[0].text,
+            r#"{"status":"complete","report":"Premature answer","sources":[]}"#
+        );
     }
 
     #[test]
     fn failed_and_cancelled_envelopes_are_not_answers() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], Some(1), "Succeeded", "Collected evidence");
-        add_run(&mut store, steps[1], Some(1), "Succeeded", "Analyzed findings");
+        add_run(
+            &mut store,
+            steps[0],
+            Some(1),
+            "Succeeded",
+            "Collected evidence",
+        );
+        add_run(
+            &mut store,
+            steps[1],
+            Some(1),
+            "Succeeded",
+            "Analyzed findings",
+        );
         let failed = add_run(
             &mut store,
             steps[2],
@@ -1465,8 +1481,10 @@ mod tests {
             "Failed",
             r#"{"status":"partial","report":"Failed partial envelope","sources":[]}"#,
         );
-        let failed_presentation =
-            present_run(&store, store.runs().iter().find(|run| run.id == failed).unwrap());
+        let failed_presentation = present_run(
+            &store,
+            store.runs().iter().find(|run| run.id == failed).unwrap(),
+        );
         assert_eq!(failed_presentation.quality, EvidenceQuality::NotValidated);
         assert!(failed_presentation.reader_markdown.is_empty());
         assert!(!failed_presentation.has_final_report);
@@ -1478,9 +1496,14 @@ mod tests {
             "Cancelled",
             &format!("{}\n\nCancelled report body", research::EVIDENCE_GAP_NOTE),
         );
-        let cancelled_presentation =
-            present_run(&store, store.runs().iter().find(|run| run.id == cancelled).unwrap());
-        assert_eq!(cancelled_presentation.quality, EvidenceQuality::NotValidated);
+        let cancelled_presentation = present_run(
+            &store,
+            store.runs().iter().find(|run| run.id == cancelled).unwrap(),
+        );
+        assert_eq!(
+            cancelled_presentation.quality,
+            EvidenceQuality::NotValidated
+        );
         assert!(cancelled_presentation.notice.is_none());
         assert!(cancelled_presentation.reader_markdown.is_empty());
     }
@@ -1489,7 +1512,13 @@ mod tests {
     fn succeeded_invalid_envelope_is_rejected_not_historical() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence");
+        add_run(
+            &mut store,
+            steps[0],
+            None,
+            "Succeeded",
+            "Collected evidence",
+        );
         add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings");
         let malformed = add_run(
             &mut store,
@@ -1498,8 +1527,10 @@ mod tests {
             "Succeeded",
             r#"{"status":"complete","report":"truncated"#,
         );
-        let presentation =
-            present_run(&store, store.runs().iter().find(|run| run.id == malformed).unwrap());
+        let presentation = present_run(
+            &store,
+            store.runs().iter().find(|run| run.id == malformed).unwrap(),
+        );
         assert_eq!(presentation.quality, EvidenceQuality::Rejected);
         assert!(presentation.reader_markdown.is_empty());
         assert_eq!(presentation.kind, ResultKind::None);
@@ -1511,12 +1542,20 @@ mod tests {
     fn plain_markdown_starting_with_brace_is_not_a_report_envelope() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence");
+        add_run(
+            &mut store,
+            steps[0],
+            None,
+            "Succeeded",
+            "Collected evidence",
+        );
         add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings");
         let text = "{not json} is a legitimate report heading, not an envelope";
         let run_id = add_run(&mut store, steps[2], None, "Succeeded", text);
-        let presentation =
-            present_run(&store, store.runs().iter().find(|run| run.id == run_id).unwrap());
+        let presentation = present_run(
+            &store,
+            store.runs().iter().find(|run| run.id == run_id).unwrap(),
+        );
         assert_eq!(presentation.quality, EvidenceQuality::Complete);
         assert_eq!(presentation.kind, ResultKind::FinalReport);
         assert_eq!(presentation.reader_markdown, text);
@@ -1527,15 +1566,33 @@ mod tests {
     fn changed_signature_marks_done_result_stale() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence");
+        add_run(
+            &mut store,
+            steps[0],
+            None,
+            "Succeeded",
+            "Collected evidence",
+        );
         add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings");
-        let report = add_run(&mut store, steps[2], None, "Succeeded", "Original final report");
+        let report = add_run(
+            &mut store,
+            steps[2],
+            None,
+            "Succeeded",
+            "Original final report",
+        );
         store.set_stage(steps[2], Stage::Done).unwrap();
         assert!(store.research_result(steps[2]).is_some());
 
-        store.task_mut(steps[2]).unwrap().description.push_str(" changed scope");
-        let presentation =
-            present_run(&store, store.runs().iter().find(|run| run.id == report).unwrap());
+        store
+            .task_mut(steps[2])
+            .unwrap()
+            .description
+            .push_str(" changed scope");
+        let presentation = present_run(
+            &store,
+            store.runs().iter().find(|run| run.id == report).unwrap(),
+        );
         assert!(presentation.freshness.stale_input);
         assert!(!presentation.has_final_report);
         // The old text remains inspectable, but it is not the current answer.
@@ -1547,12 +1604,26 @@ mod tests {
     fn legacy_plain_text_is_kept_but_not_blessed_as_final() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence");
+        add_run(
+            &mut store,
+            steps[0],
+            None,
+            "Succeeded",
+            "Collected evidence",
+        );
         add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings");
-        let report = add_run(&mut store, steps[2], None, "Succeeded", "Legacy markdown report");
+        let report = add_run(
+            &mut store,
+            steps[2],
+            None,
+            "Succeeded",
+            "Legacy markdown report",
+        );
         store.run_mut(report).unwrap().input_signature.clear();
-        let presentation =
-            present_run(&store, store.runs().iter().find(|run| run.id == report).unwrap());
+        let presentation = present_run(
+            &store,
+            store.runs().iter().find(|run| run.id == report).unwrap(),
+        );
         assert_eq!(presentation.quality, EvidenceQuality::UnverifiedLegacy);
         assert!(!presentation.reader_markdown.is_empty());
         assert!(!presentation.has_final_report);
@@ -1563,9 +1634,27 @@ mod tests {
     fn multi_goal_partial_keeps_completed_report_and_evidence() {
         let (mut store, first_goal) = workspace();
         let first_steps = store.apply_research_plan(first_goal, PLAN).unwrap();
-        add_run(&mut store, first_steps[0], Some(7), "Succeeded", "First evidence");
-        add_run(&mut store, first_steps[1], Some(7), "Succeeded", "First analysis");
-        let first_report = add_run(&mut store, first_steps[2], Some(7), "Succeeded", "First final report");
+        add_run(
+            &mut store,
+            first_steps[0],
+            Some(7),
+            "Succeeded",
+            "First evidence",
+        );
+        add_run(
+            &mut store,
+            first_steps[1],
+            Some(7),
+            "Succeeded",
+            "First analysis",
+        );
+        let first_report = add_run(
+            &mut store,
+            first_steps[2],
+            Some(7),
+            "Succeeded",
+            "First final report",
+        );
 
         let second_goal = store
             .create_research_goal(
@@ -1575,8 +1664,20 @@ mod tests {
             )
             .unwrap();
         let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-        add_run(&mut store, second_steps[0], Some(7), "Succeeded", "Second evidence");
-        add_run(&mut store, second_steps[1], Some(7), "Succeeded", "Second analysis");
+        add_run(
+            &mut store,
+            second_steps[0],
+            Some(7),
+            "Succeeded",
+            "Second evidence",
+        );
+        add_run(
+            &mut store,
+            second_steps[1],
+            Some(7),
+            "Succeeded",
+            "Second analysis",
+        );
 
         let occurrence = occurrence(
             7,
@@ -1604,9 +1705,27 @@ mod tests {
     fn all_goal_reports_required_for_complete_period() {
         let (mut store, first_goal) = workspace();
         let first_steps = store.apply_research_plan(first_goal, PLAN).unwrap();
-        add_run(&mut store, first_steps[0], Some(8), "Succeeded", "First evidence");
-        add_run(&mut store, first_steps[1], Some(8), "Succeeded", "First analysis");
-        let first_report = add_run(&mut store, first_steps[2], Some(8), "Succeeded", "First final report");
+        add_run(
+            &mut store,
+            first_steps[0],
+            Some(8),
+            "Succeeded",
+            "First evidence",
+        );
+        add_run(
+            &mut store,
+            first_steps[1],
+            Some(8),
+            "Succeeded",
+            "First analysis",
+        );
+        let first_report = add_run(
+            &mut store,
+            first_steps[2],
+            Some(8),
+            "Succeeded",
+            "First final report",
+        );
 
         let second_goal = store
             .create_research_goal(
@@ -1616,9 +1735,27 @@ mod tests {
             )
             .unwrap();
         let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-        add_run(&mut store, second_steps[0], Some(8), "Succeeded", "Second evidence");
-        add_run(&mut store, second_steps[1], Some(8), "Succeeded", "Second analysis");
-        add_run(&mut store, second_steps[2], Some(8), "Succeeded", "Second final report");
+        add_run(
+            &mut store,
+            second_steps[0],
+            Some(8),
+            "Succeeded",
+            "Second evidence",
+        );
+        add_run(
+            &mut store,
+            second_steps[1],
+            Some(8),
+            "Succeeded",
+            "Second analysis",
+        );
+        add_run(
+            &mut store,
+            second_steps[2],
+            Some(8),
+            "Succeeded",
+            "Second final report",
+        );
 
         let occurrence = occurrence(
             8,
@@ -1638,9 +1775,27 @@ mod tests {
     fn partial_one_of_many_goals_is_not_complete_answer() {
         let (mut store, first_goal) = workspace();
         let first_steps = store.apply_research_plan(first_goal, PLAN).unwrap();
-        add_run(&mut store, first_steps[0], Some(9), "Succeeded", "First evidence");
-        add_run(&mut store, first_steps[1], Some(9), "Succeeded", "First analysis");
-        let first_report = add_run(&mut store, first_steps[2], Some(9), "Succeeded", "First final report");
+        add_run(
+            &mut store,
+            first_steps[0],
+            Some(9),
+            "Succeeded",
+            "First evidence",
+        );
+        add_run(
+            &mut store,
+            first_steps[1],
+            Some(9),
+            "Succeeded",
+            "First analysis",
+        );
+        let first_report = add_run(
+            &mut store,
+            first_steps[2],
+            Some(9),
+            "Succeeded",
+            "First final report",
+        );
 
         let second_goal = store
             .create_research_goal(
@@ -1650,7 +1805,13 @@ mod tests {
             )
             .unwrap();
         let second_steps = store.apply_research_plan(second_goal, PLAN).unwrap();
-        add_run(&mut store, second_steps[0], Some(9), "Succeeded", "Second evidence");
+        add_run(
+            &mut store,
+            second_steps[0],
+            Some(9),
+            "Succeeded",
+            "Second evidence",
+        );
 
         let occurrence = occurrence(
             9,
@@ -1669,7 +1830,13 @@ mod tests {
     fn failed_single_goal_keeps_completed_evidence_and_sources() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], Some(10), "Succeeded", "Collected evidence body");
+        add_run(
+            &mut store,
+            steps[0],
+            Some(10),
+            "Succeeded",
+            "Collected evidence body",
+        );
         add_run(&mut store, steps[1], Some(10), "Succeeded", "Analyzed body");
         let occurrence = occurrence(10, vec![goal], OccurrenceStatus::Failed, None, 1);
         let presentation = present_occurrence(&store, &occurrence);
@@ -1686,7 +1853,13 @@ mod tests {
     fn blocked_envelope_is_not_accepted_as_a_validated_report() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence");
+        add_run(
+            &mut store,
+            steps[0],
+            None,
+            "Succeeded",
+            "Collected evidence",
+        );
         add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings");
         let blocked = add_run(
             &mut store,
@@ -1695,8 +1868,10 @@ mod tests {
             "Blocked",
             r#"{"status":"blocked","report":"Blocked envelope body","sources":[]}"#,
         );
-        let presentation =
-            present_run(&store, store.runs().iter().find(|run| run.id == blocked).unwrap());
+        let presentation = present_run(
+            &store,
+            store.runs().iter().find(|run| run.id == blocked).unwrap(),
+        );
         assert_eq!(presentation.quality, EvidenceQuality::NotValidated);
         assert!(presentation.reader_markdown.is_empty());
         assert!(!presentation.has_final_report);
@@ -1706,12 +1881,30 @@ mod tests {
     fn every_required_advise_output_is_needed_for_goal_completion() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], Some(13), "Succeeded", "Collected evidence");
-        add_run(&mut store, steps[1], Some(13), "Succeeded", "Analyzed findings");
-        let first_report = add_run(&mut store, steps[2], Some(13), "Succeeded", "First goal report");
+        add_run(
+            &mut store,
+            steps[0],
+            Some(13),
+            "Succeeded",
+            "Collected evidence",
+        );
+        add_run(
+            &mut store,
+            steps[1],
+            Some(13),
+            "Succeeded",
+            "Analyzed findings",
+        );
+        let first_report = add_run(
+            &mut store,
+            steps[2],
+            Some(13),
+            "Succeeded",
+            "First goal report",
+        );
 
         let second = store
-            .create_task("Second required report", 1, Stage::Planned, Some(goal))
+            .create_task("Second required report", 1, Stage::InProgress, Some(goal))
             .unwrap();
         let task = store.task_mut(second).unwrap();
         task.description = "A second required final output.".into();
@@ -1734,7 +1927,13 @@ mod tests {
         assert!(!before.has_final_report);
         assert_eq!(before.kind, ResultKind::PartialPeriod);
 
-        add_run(&mut store, second, Some(13), "Succeeded", "Second goal report");
+        add_run(
+            &mut store,
+            second,
+            Some(13),
+            "Succeeded",
+            "Second goal report",
+        );
         let after = present_occurrence(&store, &occurrence);
         assert!(after.has_final_report);
         assert_eq!(after.kind, ResultKind::FinalReport);
@@ -1745,7 +1944,13 @@ mod tests {
     fn legacy_final_run_outside_advise_children_remains_inspectable() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence");
+        add_run(
+            &mut store,
+            steps[0],
+            None,
+            "Succeeded",
+            "Collected evidence",
+        );
         add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings");
         let mut legacy = store.prepare_run(steps[2]).unwrap();
         legacy.task_id = goal;
@@ -1788,14 +1993,29 @@ mod tests {
         let (mut store, goal) = workspace();
         add_definition(&mut store, 99, 2);
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], Some(11), "Succeeded", "Collected evidence");
-        add_run(&mut store, steps[1], Some(11), "Succeeded", "Analyzed findings");
+        add_run(
+            &mut store,
+            steps[0],
+            Some(11),
+            "Succeeded",
+            "Collected evidence",
+        );
+        add_run(
+            &mut store,
+            steps[1],
+            Some(11),
+            "Succeeded",
+            "Analyzed findings",
+        );
         let partial = add_run(
             &mut store,
             steps[2],
             Some(11),
             "Succeeded",
-            &format!("{}\n\nPartial final report body", research::EVIDENCE_GAP_NOTE),
+            &format!(
+                "{}\n\nPartial final report body",
+                research::EVIDENCE_GAP_NOTE
+            ),
         );
         // A concurrent regeneration is active for the same final-report task.
         let regenerating = add_run(
@@ -1819,8 +2039,16 @@ mod tests {
         assert!(presentation.freshness.previous_version);
         assert!(presentation.freshness.regenerating);
         assert!(presentation.notice.is_some());
-        assert!(presentation.reader_markdown.contains("Partial final report body"));
-        assert!(!presentation.reader_markdown.contains(research::EVIDENCE_GAP_NOTE));
+        assert!(
+            presentation
+                .reader_markdown
+                .contains("Partial final report body")
+        );
+        assert!(
+            !presentation
+                .reader_markdown
+                .contains(research::EVIDENCE_GAP_NOTE)
+        );
         assert_eq!(presentation.progress.len(), 1);
     }
 
@@ -1828,7 +2056,13 @@ mod tests {
     fn ordinary_research_regeneration_without_occurrence_is_preserved() {
         let (mut store, goal) = workspace();
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], None, "Succeeded", "Collected evidence");
+        add_run(
+            &mut store,
+            steps[0],
+            None,
+            "Succeeded",
+            "Collected evidence",
+        );
         add_run(&mut store, steps[1], None, "Succeeded", "Analyzed findings");
         let report = add_run(
             &mut store,
@@ -1852,7 +2086,10 @@ mod tests {
 
         let index = RunIndex::new(&store);
         let indexed = present_run_indexed(&store, run, &index);
-        assert_eq!(legacy.freshness.regenerating, indexed.freshness.regenerating);
+        assert_eq!(
+            legacy.freshness.regenerating,
+            indexed.freshness.regenerating
+        );
         assert_eq!(legacy.state_label(), indexed.state_label());
         assert_eq!(legacy.reader_markdown, indexed.reader_markdown);
     }
@@ -1862,8 +2099,20 @@ mod tests {
         let (mut store, goal) = workspace();
         add_definition(&mut store, 99, 2);
         let steps = store.apply_research_plan(goal, PLAN).unwrap();
-        add_run(&mut store, steps[0], Some(12), "Succeeded", "Collected evidence");
-        add_run(&mut store, steps[1], Some(12), "Succeeded", "Analyzed findings");
+        add_run(
+            &mut store,
+            steps[0],
+            Some(12),
+            "Succeeded",
+            "Collected evidence",
+        );
+        add_run(
+            &mut store,
+            steps[1],
+            Some(12),
+            "Succeeded",
+            "Analyzed findings",
+        );
         let report = add_run(
             &mut store,
             steps[2],
@@ -1878,18 +2127,15 @@ mod tests {
             "Running",
             "Rewriting the period report",
         );
-        let occurrence = occurrence(
-            12,
-            vec![goal],
-            OccurrenceStatus::Succeeded,
-            Some(report),
-            1,
-        );
+        let occurrence = occurrence(12, vec![goal], OccurrenceStatus::Succeeded, Some(report), 1);
         let legacy = present_occurrence(&store, &occurrence);
         let index = RunIndex::new(&store);
         let indexed = present_occurrence_indexed(&store, &occurrence, &index);
         assert!(legacy.freshness.regenerating);
-        assert_eq!(legacy.freshness.regenerating, indexed.freshness.regenerating);
+        assert_eq!(
+            legacy.freshness.regenerating,
+            indexed.freshness.regenerating
+        );
         assert_eq!(legacy.state_label(), indexed.state_label());
         assert_eq!(legacy.reader_markdown, indexed.reader_markdown);
         assert_eq!(legacy.primary_run_id(), indexed.primary_run_id());
@@ -1914,8 +2160,7 @@ mod tests {
         }
         let path = root.join("workspace.sqlite3");
         let database =
-            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_30, &store)
-                .unwrap();
+            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_30, &store).unwrap();
         let mut lazy = database.load_store_lazy().unwrap();
         let final_run_id = lazy
             .runs()
@@ -1923,14 +2168,21 @@ mod tests {
             .find(|run| run.task_id == steps[2] && run.status == "Succeeded")
             .map(|run| run.id)
             .unwrap();
-        let pending_run = lazy.runs().iter().find(|run| run.id == final_run_id).unwrap();
+        let pending_run = lazy
+            .runs()
+            .iter()
+            .find(|run| run.id == final_run_id)
+            .unwrap();
         let pending = present_run(&lazy, pending_run);
         assert_eq!(pending.kind, ResultKind::LoadingReport);
         assert_eq!(pending.reader_placeholder(), "Loading saved report…");
         assert_eq!(pending.quality, EvidenceQuality::NotValidated);
         assert!(!pending.has_reader_body());
         assert!(!pending.has_final_report);
-        assert!(pending.reader_text().is_empty(), "loading copy is not report content");
+        assert!(
+            pending.reader_text().is_empty(),
+            "loading copy is not report content"
+        );
         let mut absent = lazy.clone();
         absent.clear_lazy_body(final_run_id);
         assert_eq!(present_run(&absent, pending_run).kind, ResultKind::None);
@@ -1948,16 +2200,25 @@ mod tests {
             .unwrap()
             .clone();
         let current = present_run(&lazy, &final_run);
-        assert!(!current.freshness.stale_input, "lazy ancestors must not mark the report stale");
+        assert!(
+            !current.freshness.stale_input,
+            "lazy ancestors must not mark the report stale"
+        );
         assert!(!current.freshness.historical);
         assert!(current.freshness.is_current());
         assert_eq!(current.kind, ResultKind::FinalReport);
         assert_eq!(current.quality, EvidenceQuality::Complete);
         assert!(current.has_final_report);
         assert!(lazy.goal_tasks_present(goal));
-        assert!(!lazy.goal_tasks_complete(goal), "strict admission still waits for bodies");
+        assert!(
+            !lazy.goal_tasks_complete(goal),
+            "strict admission still waits for bodies"
+        );
 
-        lazy.task_mut(steps[0]).unwrap().description.push_str(" changed scope");
+        lazy.task_mut(steps[0])
+            .unwrap()
+            .description
+            .push_str(" changed scope");
         let changed_run = lazy
             .runs()
             .iter()
@@ -1965,7 +2226,10 @@ mod tests {
             .unwrap()
             .clone();
         let changed = present_run(&lazy, &changed_run);
-        assert!(changed.freshness.stale_input, "changed ancestor input must invalidate");
+        assert!(
+            changed.freshness.stale_input,
+            "changed ancestor input must invalidate"
+        );
         assert!(!changed.freshness.is_current());
         let _ = std::fs::remove_dir_all(root);
     }
@@ -1991,8 +2255,7 @@ mod tests {
         store.archive(goal).unwrap();
         let path = root.join("workspace.sqlite3");
         let database =
-            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_35, &store)
-                .unwrap();
+            crate::sqlite_v4::SqliteV4::create_seeded(&path, &root, 0x52_31_37_35, &store).unwrap();
         let mut lazy = database.load_store_lazy().unwrap();
         let run_id = lazy
             .runs()
@@ -2027,7 +2290,10 @@ mod tests {
         assert!(after.freshness.is_current());
         assert_eq!(after.kind, ResultKind::IntermediateEvidence);
 
-        lazy.task_mut(steps[0]).unwrap().description.push_str(" changed scope");
+        lazy.task_mut(steps[0])
+            .unwrap()
+            .description
+            .push_str(" changed scope");
         let changed = lazy
             .runs()
             .iter()
@@ -2035,7 +2301,10 @@ mod tests {
             .unwrap()
             .clone();
         let changed = present_run(&lazy, &changed);
-        assert!(changed.freshness.stale_input, "real changed input must remain stale");
+        assert!(
+            changed.freshness.stale_input,
+            "real changed input must remain stale"
+        );
         assert!(!changed.freshness.is_current());
         let _ = std::fs::remove_dir_all(root);
     }
@@ -2055,5 +2324,4 @@ mod tests {
             ("## Appendix\n\nOnly appendix", None)
         );
     }
-
 }

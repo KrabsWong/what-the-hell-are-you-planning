@@ -35,11 +35,16 @@ struct Fixture {
 
 fn store() -> Store {
     let mut store = Store::empty();
-    store.project_at_mut(0).unwrap().directory = std::env::temp_dir().to_string_lossy().into_owned();
+    store.project_at_mut(0).unwrap().directory =
+        std::env::temp_dir().to_string_lossy().into_owned();
     store.set_default_model("fixture/navigation".into());
-    store.research_config_mut().models =
-        ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
-            .map(String::from);
+    store.research_config_mut().models = [
+        "fixture/plan",
+        "fixture/collect",
+        "fixture/analyze",
+        "fixture/advise",
+    ]
+    .map(String::from);
     store
 }
 
@@ -56,7 +61,10 @@ fn add_automation(store: &mut Store, name: &str) -> u64 {
             "Track public filings".into(),
             "A cited note".into(),
             Schedule {
-                spec: ScheduleSpec::Daily { hour: 8, minute: 30 },
+                spec: ScheduleSpec::Daily {
+                    hour: 8,
+                    minute: 30,
+                },
                 timezone: "Asia/Shanghai".into(),
             },
             AutomationPolicy::default(),
@@ -85,8 +93,13 @@ fn add_period(store: &mut Store, automation: u64, scheduled: i64) -> u64 {
             expected_result: definition.expected_result.clone(),
             shape: Some(definition.shape),
             template: definition.template.clone().unwrap(),
-            models: ["fixture/plan", "fixture/collect", "fixture/analyze", "fixture/advise"]
-                .map(String::from),
+            models: [
+                "fixture/plan",
+                "fixture/collect",
+                "fixture/analyze",
+                "fixture/advise",
+            ]
+            .map(String::from),
             agents: Default::default(),
             materials: vec![],
             policy: definition.policy.clone(),
@@ -136,9 +149,13 @@ fn fixture() -> (Store, Fixture) {
     let _ = finish_steps(&mut store, other_period);
     let _ = finish_steps(&mut store, other_second_period);
     let first_steps = finish_steps(&mut store, first_period);
-    let research_goal = store.create_research_goal(
-        "Completed ordinary research".into(), "Verify result-first navigation.".into(), 1,
-    ).unwrap();
+    let research_goal = store
+        .create_research_goal(
+            "Completed ordinary research".into(),
+            "Verify result-first navigation.".into(),
+            1,
+        )
+        .unwrap();
     let research_steps = store.apply_research_plan(research_goal,
         r#"{"tasks":[{"title":"Collect evidence","instructions":"Collect sources.","kind":"collect","depends_on":[]},{"title":"Analyze evidence","instructions":"Analyze sources.","kind":"analyze","depends_on":[0]},{"title":"Write report","instructions":"Write the report.","kind":"advise","depends_on":[1]}]}"#,
     ).unwrap();
@@ -424,23 +441,33 @@ fn exercise_completed_research(
             cx.notify();
         });
         w.render_frame(cx);
-    }).unwrap();
+    })
+    .unwrap();
     cx.run_until_parked();
-    for (task, run) in std::iter::once((goal, final_run))
-        .chain(steps.iter().copied().zip(runs.iter().copied()))
+    for (task, run) in
+        std::iter::once((goal, final_run)).chain(steps.iter().copied().zip(runs.iter().copied()))
     {
         cx.update_window(handle, |_, w, cx| {
             w.render_frame(cx);
             w.click(format!("sidebar-task-{task}"), cx);
             w.render_frame(cx);
             let a = app.read(cx);
-            assert_eq!(a.task_result_context(), Some(task),
-                "{theme}: sidebar opens the completed task's result context");
-            assert_eq!(a.selected_run(), Some(run),
-                "{theme}: a goal opens its final report and a step opens its own report");
-            assert!(w.find("research-result-scroll").visible(),
-                "{theme}: completed sidebar targets show the report reader");
-        }).unwrap();
+            assert_eq!(
+                a.task_result_context(),
+                Some(task),
+                "{theme}: sidebar opens the completed task's result context"
+            );
+            assert_eq!(
+                a.selected_run(),
+                Some(run),
+                "{theme}: a goal opens its final report and a step opens its own report"
+            );
+            assert!(
+                w.find("research-result-scroll").visible(),
+                "{theme}: completed sidebar targets show the report reader"
+            );
+        })
+        .unwrap();
     }
     for from_result in [false, true] {
         for (origin, control, target, run) in [
@@ -458,18 +485,28 @@ fn exercise_completed_research(
                 });
                 w.render_frame(cx);
                 if !from_result {
-                    assert_eq!(app.read(cx).selected(), Some(origin),
-                        "{theme}: regression starts on explicit task detail");
+                    assert_eq!(
+                        app.read(cx).selected(),
+                        Some(origin),
+                        "{theme}: regression starts on explicit task detail"
+                    );
                 }
                 w.click(control, cx);
                 w.render_frame(cx);
                 let a = app.read(cx);
-                assert_eq!(a.task_result_context(), Some(target),
-                    "{theme}: {control} prefers completed results from detail and reader");
-                assert_eq!(a.selected_run(), Some(run),
-                    "{theme}: {control} opens the target's report, not the prior report");
+                assert_eq!(
+                    a.task_result_context(),
+                    Some(target),
+                    "{theme}: {control} prefers completed results from detail and reader"
+                );
+                assert_eq!(
+                    a.selected_run(),
+                    Some(run),
+                    "{theme}: {control} opens the target's report, not the prior report"
+                );
                 assert!(w.find("research-result-scroll").visible());
-            }).unwrap();
+            })
+            .unwrap();
         }
     }
 }
@@ -562,7 +599,11 @@ fn exercise(
             let a = app.read(cx);
             (a.scope(), a.automation_ui.selected, a.period_overlay())
         };
-        assert_eq!(scope, Scope::Automations, "{theme}: Back opens the owning automation");
+        assert_eq!(
+            scope,
+            Scope::Automations,
+            "{theme}: Back opens the owning automation"
+        );
         assert_eq!(automation, Some(fixture.first_automation));
         assert_eq!(
             dialog,
@@ -621,7 +662,6 @@ fn exercise(
             !foreign_steps.contains(&last),
             "{theme}: navigation reached another automation period"
         );
-
     })
     .unwrap();
 
@@ -637,12 +677,7 @@ fn exercise(
     .unwrap();
 }
 
-fn screenshot(
-    cx: &mut HeadlessAppContext,
-    handle: AnyWindowHandle,
-    directory: &Path,
-    name: &str,
-) {
+fn screenshot(cx: &mut HeadlessAppContext, handle: AnyWindowHandle, directory: &Path, name: &str) {
     for _ in 0..4 {
         std::thread::sleep(Duration::from_millis(30));
         cx.run_until_parked();

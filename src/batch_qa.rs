@@ -95,7 +95,7 @@ pub fn run() {
     initial.set_stage(backlog, Stage::Backlog).unwrap();
     let other = goal(&mut initial, "Other project stays untouched", 2);
     let ordinary = initial
-        .create_task("Ordinary Todo fixture", 1, Stage::Planned, None)
+        .create_task("Ordinary Todo fixture", 1, Stage::InProgress, None)
         .unwrap();
     Storage::new(path.clone()).save(&initial).unwrap();
     let mut cx = context();
@@ -115,18 +115,12 @@ pub fn run() {
     let handle: AnyWindowHandle = window.into();
     screenshot(&mut cx, handle, &root, "01-idle-project.png");
     cx.update_window(handle, |_, w, cx| {
-        assert_eq!(
-            app.read(cx).store.todo_batch_items(1),
-            vec![first, second]
-        );
+        assert_eq!(app.read(cx).store.todo_batch_items(1), vec![first, second]);
         w.render_frame(cx);
         w.click("run-project-todo", cx);
         app.update(cx, |a, cx| {
             assert!(!a.queued_runs.is_empty(), "{}", a.error);
-            assert_eq!(
-                a.todo_batch.as_ref().unwrap().items,
-                vec![first, second]
-            );
+            assert_eq!(a.todo_batch.as_ref().unwrap().items, vec![first, second]);
             a.start_todo_batch(1, cx);
             assert_eq!(
                 a.store.runs().len(),
@@ -207,7 +201,7 @@ pub fn run() {
                     .iter()
                     .any(|r| r.task_id == backlog || r.task_id == other)
             );
-            assert_eq!(a.store.task(ordinary).unwrap().stage, Stage::Planned);
+            assert_eq!(a.store.task(ordinary).unwrap().stage, Stage::InProgress);
             assert_eq!(a.store.todo_batch_items(1), vec![late]);
             assert!(
                 !a.store.runs().iter().any(|r| r.task_id == late),
@@ -227,7 +221,16 @@ pub fn run() {
     .unwrap();
     let blocked = start_goal(&mut cx, handle, &app, "QA_BLOCK");
     idle(&mut cx, handle, &app);
-    assert_eq!(cx.update(|cx| app.read(cx).todo_batch.as_ref().unwrap().failed_items.clone()), vec![blocked.0]);
+    assert_eq!(
+        cx.update(|cx| app
+            .read(cx)
+            .todo_batch
+            .as_ref()
+            .unwrap()
+            .failed_items
+            .clone()),
+        vec![blocked.0]
+    );
     cx.update_window(handle, |_, _, cx| {
         assert_eq!(
             app.read(cx)
@@ -341,7 +344,12 @@ pub fn run() {
             a.todo_batch.as_ref().unwrap().state,
             BatchState::Paused(_)
         ));
-        assert!(!a.store.runs().iter().any(|r| r.task_id == storage_goal.1[1]));
+        assert!(
+            !a.store
+                .runs()
+                .iter()
+                .any(|r| r.task_id == storage_goal.1[1])
+        );
     })
     .unwrap();
     cx.update_window(handle, |_, _, cx| {
@@ -357,9 +365,17 @@ pub fn run() {
     cx.update_window(handle, |_, _, cx| {
         let store = &app.read(cx).store;
         assert!(store.goal_tasks_complete(storage_goal.0));
-        assert_eq!(store.runs().iter().filter(|r| r.task_id == storage_goal.1[0]).count(), 1,
-            "Restoring storage must not repeat successful external work");
-    }).unwrap();
+        assert_eq!(
+            store
+                .runs()
+                .iter()
+                .filter(|r| r.task_id == storage_goal.1[0])
+                .count(),
+            1,
+            "Restoring storage must not repeat successful external work"
+        );
+    })
+    .unwrap();
     // Queue submission is an explicit in-place command; background planning
     // must not navigate away from the project surface.
     let paused_plan = cx
@@ -368,7 +384,7 @@ pub fn run() {
                 a.cancel_todo_batch(cx);
                 let id = goal(&mut a.store, "Pause during planning", 1);
                 a.store.apply_research_plan(id, PLAN).unwrap();
-                a.store.set_stage(id, Stage::Planned).unwrap();
+                a.store.set_stage(id, Stage::InProgress).unwrap();
                 a.start_todo_batch(1, cx);
                 a.pause_todo_batch(cx);
                 id
@@ -399,7 +415,7 @@ pub fn run() {
     .unwrap();
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
-            a.store.set_stage(paused_plan, Stage::Planned).unwrap();
+            a.store.set_stage(paused_plan, Stage::InProgress).unwrap();
             a.resume_todo_batch(cx);
         })
     })
@@ -448,7 +464,8 @@ fn pending_result_checks(
         app.update(cx, |a, _| {
             a.storage = Some(Storage::new(bad_parent.join("workspace.json")));
         })
-    }).unwrap();
+    })
+    .unwrap();
     idle(cx, handle, app);
     let manual = cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
@@ -477,21 +494,33 @@ fn pending_result_checks(
             a.cancel_todo_batch(cx);
             assert!(a.task_running(manual));
         })
-    }).unwrap();
+    })
+    .unwrap();
     idle(cx, handle, app);
     cx.update_window(handle, |_, _, cx| {
         app.update(cx, |a, cx| {
             assert!(a.store.research_result(manual).is_some());
             a.start_goal_batch(goal_id, cx);
         })
-    }).unwrap();
+    })
+    .unwrap();
     idle(cx, handle, app);
     cx.update_window(handle, |_, _, cx| {
         let a = app.read(cx);
         assert!(a.store.goal_tasks_complete(goal_id));
-        assert_eq!(a.store.runs().iter().filter(|r| r.task_id == item).count(), 2);
-        assert!(a.store.research_result(item).unwrap().prompt.contains("newly supplied source clarification"));
-    }).unwrap();
+        assert_eq!(
+            a.store.runs().iter().filter(|r| r.task_id == item).count(),
+            2
+        );
+        assert!(
+            a.store
+                .research_result(item)
+                .unwrap()
+                .prompt
+                .contains("newly supplied source clarification")
+        );
+    })
+    .unwrap();
 }
 
 fn goal(store: &mut Store, title: &str, project: u64) -> u64 {

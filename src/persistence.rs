@@ -218,6 +218,7 @@ impl Storage {
                     .unwrap_or_else(|| "missing or invalid".into())
             ));
         }
+        let value = normalize_removed_task_fields(value);
         let mut file: WorkspaceFile = serde_json::from_value(value).map_err(|error| {
             format!("Invalid workspace data in {}: {error}", self.path.display())
         })?;
@@ -435,6 +436,29 @@ impl Storage {
         })?;
         Ok(parent)
     }
+}
+
+fn normalize_removed_task_fields(mut value: serde_json::Value) -> serde_json::Value {
+    if let Some(tasks) = value
+        .get_mut("workspace")
+        .and_then(|workspace| workspace.get_mut("tasks"))
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for task in tasks {
+            if let Some(object) = task.as_object_mut() {
+                if object.get("priority").is_some()
+                    && object.get("stage").and_then(serde_json::Value::as_str)
+                        == Some("Planned")
+                {
+                    object.insert("stage".into(), serde_json::Value::from("Backlog"));
+                }
+                object.remove("priority");
+                object.remove("cycle");
+                object.remove("bucket");
+            }
+        }
+    }
+    value
 }
 
 #[cfg(test)]

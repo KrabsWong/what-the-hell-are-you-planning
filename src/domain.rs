@@ -44,7 +44,7 @@ mod fixtures;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Stage {
     Backlog,
-    #[serde(alias = "Planned", alias = "Todo")]
+    #[serde(alias = "Todo")]
     InProgress,
     Review,
     Done,
@@ -316,7 +316,24 @@ fn default_concurrent_automations() -> TrackedScalar<usize> {
 fn deserialize_tasks<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<TrackedVec<Task>, D::Error> {
-    let items = Vec::<Task>::deserialize(deserializer)?;
+    let values = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    let items = values
+        .into_iter()
+        .map(|mut value| {
+            if let Some(object) = value.as_object_mut() {
+                if object.get("priority").is_some()
+                    && object.get("stage").and_then(serde_json::Value::as_str)
+                        == Some("Planned")
+                {
+                    object.insert("stage".into(), serde_json::Value::from("Backlog"));
+                }
+                object.remove("priority");
+                object.remove("cycle");
+                object.remove("bucket");
+            }
+            serde_json::from_value(value).map_err(serde::de::Error::custom)
+        })
+        .collect::<Result<Vec<Task>, D::Error>>()?;
     tracked::task_from(items).map_err(serde::de::Error::custom)
 }
 
@@ -3501,6 +3518,28 @@ mod tests {
         assert_eq!(store.task_topic(goal).unwrap().project_id, project + 1);
         assert_eq!(store.task_topic(goal).unwrap().name, "Earnings");
         store.set_goal_topic(goal, Some(foreign_topic)).unwrap();
+    }
+
+    #[test]
+    fn legacy_task_properties_load_without_blocking_startup() {
+        let mut store = Store::empty();
+        let project = store.project_at_mut(0).unwrap().id;
+        let task = store
+            .create_task("Legacy task", project, Stage::InProgress, None)
+            .unwrap();
+        let mut legacy = serde_json::to_value(&store).unwrap();
+        for value in legacy["tasks"].as_array_mut().unwrap() {
+            if value["id"].as_u64() != Some(task) {
+                continue;
+            }
+            let object = value.as_object_mut().unwrap();
+            object.insert("stage".into(), serde_json::Value::from("Planned"));
+            object.insert("priority".into(), serde_json::Value::from("Medium"));
+            object.insert("cycle".into(), serde_json::Value::from("Q4"));
+            object.insert("bucket".into(), serde_json::Value::from("Now"));
+        }
+        let loaded: Store = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.task(task).unwrap().stage, Stage::Backlog);
     }
 
     #[test]

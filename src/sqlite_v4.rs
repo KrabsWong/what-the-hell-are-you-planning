@@ -1682,6 +1682,19 @@ fn load_rows<T: DeserializeOwned>(
         let payload = row.map_err(|error| error.to_string())?;
         let mut value: Value = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
         transform_entity_paths(&mut value, work_table, root, false)?;
+        if work_table == WorkTable::Tasks
+            && value.get("priority").is_some()
+            && value.get("stage").and_then(Value::as_str) == Some("Planned")
+        {
+            if let Some(object) = value.as_object_mut() {
+                object.insert("stage".into(), Value::from("Backlog"));
+            }
+        }
+        if let Some(object) = value.as_object_mut() {
+            object.remove("priority");
+            object.remove("cycle");
+            object.remove("bucket");
+        }
         values.push(serde_json::from_value(value).map_err(|error| error.to_string())?);
     }
     Ok(values)

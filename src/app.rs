@@ -298,7 +298,6 @@ pub struct TaskApp {
     pub(crate) dialog_opener_focus: Option<gpui_kit::WeakFocusHandle>,
     pub(crate) research_save_opener: Option<FocusHandle>,
     pub(crate) previous_versions_opener: Option<FocusHandle>,
-    pub comment: Entity<TextareaState>,
     pub report_regeneration: Option<(u64, Entity<TextareaState>)>,
     pub toast: String,
     /// Version offered by Sparkle, if an update is available.
@@ -544,7 +543,6 @@ pub struct TaskApp {
         std::collections::HashMap<u64, crate::execution_status::ExecutionStatus>,
     >,
     pub render_status_epoch: std::cell::Cell<u64>,
-    pub show_task_activity: bool,
     pub automation_ui: crate::automation_views::AutomationUi,
     /// T10 return context and recent-surface memory.
     pub(crate) navigation: crate::navigation_context_app::NavigationState,
@@ -985,11 +983,6 @@ impl TaskApp {
             dialog_opener_focus: None,
             research_save_opener: None,
             previous_versions_opener: None,
-            comment: cx.new(|cx| {
-                TextareaState::new(window, cx)
-                    .placeholder(crate::i18n::tr("Leave a comment…"))
-                    .rows(3)
-            }),
             report_regeneration: None,
             toast: "All changes saved".into(),
             update_available: None,
@@ -1102,7 +1095,6 @@ impl TaskApp {
             render_statuses: Default::default(),
             render_executions: Default::default(),
             render_status_epoch: Default::default(),
-            show_task_activity: false,
             automation_ui,
             navigation: crate::navigation_context_app::NavigationState::new(),
             automation_generation: 0,
@@ -1908,7 +1900,6 @@ impl TaskApp {
     }
 
     pub fn navigate(&mut self, scope: Scope, window: &mut Window, cx: &mut Context<Self>) {
-        self.park_current_comment(cx);
         self.park_research_composer(cx);
         let removed_modal_focus = self.period_overlay().is_some()
             || self.settings_overlay()
@@ -2044,9 +2035,6 @@ impl TaskApp {
             || self.task_editor_overlay().is_some()
             || self.previous_versions_task.is_some()
             || self.research_save_impact.is_some();
-        if self.selected() != Some(id) {
-            self.park_current_comment(cx);
-        }
         if self.selected() != Some(id) && self.task_result_context() != Some(id) {
             self.detail_scroll.set_offset(point(px(0.), px(0.)));
         }
@@ -2060,7 +2048,6 @@ impl TaskApp {
         self.tabs.retain(|task| *task != id);
         self.tabs.push(id);
         self.expanded_request_brief = None;
-        self.show_task_activity = false;
         self.set_task_identity(id);
         if self.selected() != Some(id) {
             self.toast = "That task is no longer available. Returned to a safe parent.".into();
@@ -2073,7 +2060,6 @@ impl TaskApp {
         let _ = self.close_task_editor_overlay();
         self.draft = None;
         self.error.clear();
-        self.restore_task_comment(id, window, cx);
         // A research step may need lazy prerequisite bodies before its retry can
         // be admitted, so opening it must wake the bounded runtime pump.
         self.start_pump(cx);

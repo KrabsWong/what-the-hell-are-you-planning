@@ -12,7 +12,7 @@ use crate::app::{Scope, TaskApp};
 use crate::automation_views::AutomationDraft;
 use crate::draft_exit::{
     ComposerDraft, DecisionOutcome, DecisionSurface, DraftSurface, ExitDecision, ExitTarget,
-    PendingExit, PerTaskText, SaveOutcome, TaskEditValues,
+    PendingExit, SaveOutcome, TaskEditValues,
 };
 use crate::navigation_context::{
     CreationMode, NavigationTarget, Origin, PeriodUnder, RecentSurface, ScrollState,
@@ -70,8 +70,6 @@ pub(crate) struct NavigationState {
     pub task_edit_baseline: Option<(u64, TaskEditValues)>,
     /// Planning composer baseline (empty for New, prefilled for Replan).
     pub planning_baseline: String,
-    /// Per-task inline comments, so switching tasks never drops typed text.
-    pub comments: PerTaskText,
     /// Market research composer parked across navigation.
     pub composer: Option<ComposerDraft>,
     /// One pending Save/Discard/Stay decision.
@@ -105,7 +103,6 @@ impl NavigationState {
             automation_baseline: None,
             task_edit_baseline: None,
             planning_baseline: String::new(),
-            comments: PerTaskText::default(),
             composer: None,
             pending_exit: None,
             decision_return_focus: None,
@@ -661,12 +658,6 @@ impl TaskApp {
             let current = self.project_brief.read(cx).value().to_string();
             if crate::draft_exit::text_draft_dirty(&self.navigation.planning_baseline, &current) {
                 return Some(DraftSurface::PlanningRequest);
-            }
-        }
-        if let Some(task) = self.selected().or(self.task_result_context()) {
-            let current = self.comment.read(cx).value().to_string();
-            if crate::draft_exit::comment_draft_dirty(&current) {
-                return Some(DraftSurface::Comment { task });
             }
         }
         if self.scope() == Scope::Research {
@@ -1435,28 +1426,6 @@ impl TaskApp {
         self.research_brief
             .update(cx, |s, cx| s.set_value("", w, cx));
         cx.notify();
-    }
-
-    pub(crate) fn park_current_comment(&mut self, cx: &App) {
-        if let Some(task) = self.selected() {
-            let text = self.comment.read(cx).value().to_string();
-            self.navigation.comments.set(task, text);
-        }
-    }
-
-    pub(crate) fn restore_task_comment(
-        &mut self,
-        task: u64,
-        w: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let text = self
-            .navigation
-            .comments
-            .get(task)
-            .unwrap_or_default()
-            .to_string();
-        self.comment.update(cx, |s, cx| s.set_value(text, w, cx));
     }
 
     pub(crate) fn park_research_composer(&mut self, cx: &App) {

@@ -1,15 +1,12 @@
-//! Goal-local execution views; step cards never approve or launch work.
+//! Goal-local execution state and actions shared by task surfaces.
+use crate::research::ResearchKind;
 use crate::{
     app::TaskApp,
     domain::{AgentRun, Stage, Store},
     execution_status::ExecutionStatus,
     views::*,
 };
-use gpui_kit::{
-    component::{Disableable, Selectable},
-    prelude::FluentBuilder,
-    *,
-};
+use gpui_kit::{component::Disableable, *};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StepState {
@@ -100,36 +97,6 @@ pub(crate) fn run_failure_detail(run: &AgentRun) -> String {
 }
 
 impl Store {
-    /// Leaf-first chain of unfinished prerequisites, including transitive
-    /// dependencies. Used only to offer an explicit rerun path; execution still
-    /// revalidates every dependency before dispatch.
-    pub(crate) fn missing_prerequisite_chain(&self, id: u64) -> Vec<u64> {
-        fn collect(
-            store: &Store,
-            id: u64,
-            seen: &mut std::collections::BTreeSet<u64>,
-            out: &mut Vec<u64>,
-        ) {
-            let Some(task) = store.task(id) else { return };
-            let Some(research) = task.research.as_ref() else {
-                return;
-            };
-            for dep in &research.depends_on {
-                if !seen.insert(*dep) {
-                    continue;
-                }
-                collect(store, *dep, seen, out);
-                if store.research_result(*dep).is_none() {
-                    out.push(*dep);
-                }
-            }
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        let mut out = Vec::new();
-        collect(self, id, &mut seen, &mut out);
-        out
-    }
-
     pub(crate) fn step_state(&self, id: u64) -> StepState {
         let Some(task) = self.task(id) else {
             return StepState::Blocked;
@@ -303,20 +270,23 @@ impl TaskApp {
                 a.approve_and_run_research_topic(goal, cx)
             }))
     }
-    pub(crate) fn step_execution_panel(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn step_run_button(
+        &self,
+        id: u64,
+        element: &'static str,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::component::button::Button {
         let Some(task) = self.store.task(id) else {
-            return div().into_any_element();
+            return button(element, "Run step").disabled(true);
         };
         let Some(research) = task
             .research
             .as_ref()
-            .filter(|r| r.kind != crate::research::ResearchKind::Goal)
+            .filter(|r| r.kind != ResearchKind::Goal)
         else {
-            return div().into_any_element();
+            return button(element, "Run step").disabled(true);
         };
-        let goal = research.goal_id;
-        let status = self.display_task_status(id);
-        let state = status.execution;
+        let state = self.display_task_status(id).execution;
         let archived = self.store.task_is_archived(id);
         let pending = self.store.research_pending_approval(id);
         let checking = self.recovery_blocks_task(id);
@@ -341,93 +311,65 @@ impl TaskApp {
             .iter()
             .rev()
             .find(|r| r.task_id == id && r.project_plan.is_none());
-        let reason = if archived {
-            "This step belongs to archived work. Restore its topic or goal before running.".into()
-        } else if pending {
-            "Run goal to approve and start.".into()
-        } else if checking {
-            "The previous session has not been confirmed stopped. Check its progress before retrying to avoid a duplicate run.".into()
+        let disabled = archived
+            || pending
+            || checking
+            || active
+            || cancelled
+            || !dependencies.is_empty()
+            || !self.storage_error.is_empty();
+        let label = if state == ExecutionStatus::Done {
+            "Run again"
+        } else if latest.is_some() {
+            "Retry step"
         } else {
-            status.reason.clone()
+            "Run step"
+        };
+        let tooltip = if archived {
+            "Restore the archived topic or goal before running this step."
+        } else if pending {
+            "Approve this goal's plan before running this step."
+        } else if checking {
+            "Confirm the previous session before starting a duplicate run."
+        } else if cancelled {
+            "Reopen this step before running it again."
+        } else if active {
+            "This step is already running or queued."
+        } else if !dependencies.is_empty() {
+            "Finish the upstream steps before running this one."
+        } else if !self.storage_error.is_empty() {
+            "Local storage must recover before dispatch."
+        } else {
+            "Run only this step; completed prerequisite results are reused."
+        };
+        let action = primary_button(element, label);
+        action
+            .disabled(disabled)
+            .tooltip(crate::i18n::tr(tooltip))
+            .on_click(cx.listener(move |a, _, _, cx| a.start_run(id, cx)))
+    }
+
+    pub(crate) fn step_recovery_actions(&self, id: u64, cx: &mut Context<Self>) -> AnyElement {
+        let Some(task) = self.store.task(id) else {
+            return div().into_any_element();
+        };
+        let Some(research) = task
+            .research
+            .as_ref()
+            .filter(|r| r.kind != ResearchKind::Goal)
+        else {
+            return div().into_any_element();
         };
         let colors = crate::appearance::palette(cx);
-        let mut panel = col()
-            .id("step-execution-panel")
-            .w_full()
-            .min_w_0()
-            .gap_2()
-            .py_2()
-            .pl_3()
-            .when(state != ExecutionStatus::Done, |panel| {
-                panel.border_l_2().border_color(rgb(state.color(cx)))
-            });
-        if state != ExecutionStatus::Done {
-            panel = panel
-                .child(
-                    div()
-                        .id("step-execution-status")
-                        .aria_label(crate::i18n::tr(self.display_task_status(id).label()))
-                        .text_sm()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(state.color(cx)))
-                        .child(crate::i18n::tr(self.display_task_status(id).label()))
-                        .map(observed),
-                )
-                .child(
-                    div()
-                        .id("step-execution-reason")
-                        .text_sm()
-                        .text_color(rgb(colors.secondary))
-                        .child(selectable(reason))
-                        .map(observed),
-                );
-        }
-        if state == ExecutionStatus::Blocked {
-            if let Some(run) = latest {
-                let detail = run
-                    .logs
-                    .iter()
-                    .rev()
-                    .find(|line| {
-                        crate::run_errors::is_browser_handoff(line)
-                            || ["[error]", "[interrupted]", "[workspace]", "[stream error]"]
-                                .iter()
-                                .any(|prefix| line.starts_with(prefix))
-                    })
-                    .map(|line| crate::run_errors::user_message(line).to_owned());
-                if let Some(detail) = detail {
-                    panel = panel.child(crate::views::notice(
-                        crate::views::NoticeTone::Danger,
-                        detail,
-                        cx,
-                    ));
-                }
-            }
-        }
-        for dep in dependencies.iter().copied() {
-            let title = self
-                .store
-                .task(dep)
-                .map(|t| format!("Open {}", self.store.identifier(t)))
-                .unwrap_or_else(|| format!("Missing prerequisite {dep}"));
-            panel = panel.child(
-                button(format!("step-prerequisite-{dep}"), title)
-                    .w_full()
-                    .tooltip(crate::i18n::tr(
-                        self.store
-                            .task(dep)
-                            .map(|t| t.title.clone())
-                            .unwrap_or_default(),
-                    ))
-                    .disabled(self.store.task(dep).is_none())
-                    .on_click(cx.listener(move |a, _, w, cx| a.open_task(dep, w, cx))),
-            );
-        }
-        let mut actions = col().w_full().gap_1();
+        let archived = self.store.task_is_archived(id);
+        let checking = self.recovery_blocks_task(id);
+        let cancelled = task.stage == Stage::Cancelled;
+        let mut actions = col().w_full().min_w_0().gap_1();
         if checking {
             actions = actions.child(
-                button("step-check-session", "Check previous session")
-                    .on_click(cx.listener(|a, _, _, cx| a.check_interrupted_sessions(cx))),
+                button("step-check-session", "Check previous session").on_click(cx.listener(
+                    |a, _, _, cx| a.check_interrupted_sessions(cx),
+                )),
             );
         }
         if cancelled && !archived {
@@ -442,96 +384,49 @@ impl TaskApp {
                 },
             )));
         }
-        let run_action = if state == ExecutionStatus::Done {
-            quiet_button("step-run", "Run again")
-                .self_start()
-                .h_7()
-                .px_1()
-                .text_sm()
-                .text_color(rgb(colors.secondary))
-        } else {
-            primary_button(
-                "step-run",
-                if latest.is_some() {
-                    "Retry step"
-                } else {
-                    "Run step"
-                },
-            )
-        };
-        let action_tooltip = if !dependencies.is_empty() {
-            let names: Vec<String> = dependencies
-                .iter()
-                .map(|dep| {
-                    self.store
-                        .task(*dep)
-                        .map(|task| self.store.identifier(task))
-                        .unwrap_or_else(|| format!("Missing prerequisite {dep}"))
+        for dep in research
+            .depends_on
+            .iter()
+            .copied()
+            .filter(|dep| self.store.research_result(*dep).is_none())
+        {
+            let Some(task) = self.store.task(dep) else {
+                continue;
+            };
+            let title = format!("{} · {}", self.store.identifier(task), task.title);
+            actions = actions.child(
+                link_text(format!("step-prerequisite-{dep}"), title, cx).on_click(
+                    cx.listener(move |a, _, w, cx| a.open_task(dep, w, cx)),
+                ),
+            );
+        }
+        let blocked_detail = (self.display_task_status(id).execution == ExecutionStatus::Blocked)
+            .then(|| {
+                self.store
+                    .runs()
+                    .iter()
+                    .rev()
+                    .find(|r| r.task_id == id && r.project_plan.is_none())
+            })
+            .flatten()
+            .and_then(|run| {
+                run.logs.iter().rev().find(|line| {
+                    crate::run_errors::is_browser_handoff(line)
+                        || ["[error]", "[interrupted]", "[workspace]", "[stream error]"]
+                            .iter()
+                            .any(|prefix| line.starts_with(prefix))
                 })
-                .collect();
-            format!(
-                "Only this step stays disabled until prerequisites finish: {}. Use Rerun prerequisite to re-run the upstream work.",
-                names.join(", ")
-            )
-        } else if cancelled {
-            "Reopen this step before running it again.".into()
-        } else if checking {
-            "Confirm the previous session before starting a duplicate run.".into()
-        } else if pending {
-            "Approve this goal's plan before running this step.".into()
-        } else if active {
-            "This step is already running or queued.".into()
-        } else if archived {
-            "Restore the archived topic or goal before running this step.".into()
-        } else if !self.storage_error.is_empty() {
-            format!(
-                "Local storage must recover before dispatch: {}",
-                self.storage_error
-            )
-        } else {
-            "Run only this step; completed prerequisite results are reused.".into()
-        };
-        let prerequisite_replay = self.store.missing_prerequisite_chain(id).into_iter().next();
-        if !archived {
-            actions = actions.child(
-                run_action
-                    .disabled(
-                        pending || checking || active || cancelled || !dependencies.is_empty(),
-                    )
-                    .tooltip(crate::i18n::tr(action_tooltip))
-                    .on_click(cx.listener(move |a, _, _, cx| a.start_run(id, cx))),
-            );
+            })
+            .map(|line| crate::run_errors::user_message(line).to_owned());
+        if let Some(detail) = blocked_detail {
+            actions = actions.child(crate::views::notice(
+                crate::views::NoticeTone::Danger,
+                detail,
+                cx,
+            ));
         }
-        if let Some(prerequisite) = prerequisite_replay {
-            let title = self
-                .store
-                .task(prerequisite)
-                .map(|task| self.store.identifier(task))
-                .unwrap_or_else(|| format!("prerequisite {prerequisite}"));
+        if self.store.runs().iter().any(|r| r.task_id == id && r.project_plan.is_none()) {
             actions = actions.child(
-                button("step-rerun-prerequisite", format!("Rerun prerequisite · {title}"))
-                    .tooltip(crate::i18n::tr(format!(
-                        "Run {title} and its own unfinished prerequisites first. This step stays disabled until its results are current."
-                    )))
-                    .on_click(cx.listener(move |a, _, _, cx| {
-                        a.start_run_background(prerequisite, cx)
-                    })),
-            );
-        }
-        let mut links = col().gap_1().child(
-            quiet_button(
-                "step-open-goal",
-                if pending { "Review goal" } else { "Open goal" },
-            )
-            .self_start()
-            .h_7()
-            .px_1()
-            .text_sm()
-            .text_color(rgb(colors.secondary))
-            .on_click(cx.listener(move |a, _, w, cx| a.open_task(goal, w, cx))),
-        );
-        if latest.is_some() {
-            links = links.child(
                 quiet_button("step-attempt-details", "Technical details")
                     .self_start()
                     .h_7()
@@ -546,22 +441,7 @@ impl TaskApp {
                     })),
             );
         }
-        panel
-            .child(actions.child(links))
-            .when_some(
-                self.task_start_feedback
-                    .as_ref()
-                    .filter(|(task, _)| *task == id),
-                |d, (_, message)| {
-                    d.child(crate::views::notice(
-                        crate::views::NoticeTone::Danger,
-                        message.clone(),
-                        cx,
-                    ))
-                },
-            )
-            .map(observed)
-            .into_any_element()
+        actions.into_any_element()
     }
 }
 

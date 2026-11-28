@@ -453,7 +453,6 @@ fn run_checks(layout_only: bool) {
                     app.update(cx, |a, cx| a.open_task(steps[1], w, cx));
                     w.render_frame(cx);
                     assert!(w.find("step-run").visible());
-                    assert!(w.find("step-open-goal").visible());
                     assert!(w.find("step-attempt-details").visible());
                 })
                 .unwrap();
@@ -875,12 +874,7 @@ fn run_checks(layout_only: bool) {
             })
             .unwrap();
             cx.update_window(handle, |_, w, cx| {
-                assert!(!app.read(cx).show_task_activity);
-                assert!(w.try_find("comment-input").is_none());
-                click_in(w, cx, "detail-scroll", "task-activity-toggle");
-                assert!(app.read(cx).show_task_activity);
-                assert!(w.try_find("comment-input").is_some());
-                click_in(w, cx, "detail-scroll", "task-activity-toggle");
+                assert!(w.try_find("task-activity-toggle").is_none());
                 assert!(w.try_find("comment-input").is_none());
                 assert_eq!(
                     w.find("task-view-result").label(),

@@ -345,9 +345,6 @@ impl TaskApp {
         self.model_profile_name.update(cx, |state, cx| {
             state.set_placeholder(crate::i18n::tr("Profile name"), window, cx)
         });
-        self.comment.update(cx, |state, cx| {
-            state.set_placeholder(crate::i18n::tr("Leave a comment…"), window, cx)
-        });
         self.project_brief.update(cx, |state, cx| {
             state.set_placeholder(
                 crate::i18n::tr(

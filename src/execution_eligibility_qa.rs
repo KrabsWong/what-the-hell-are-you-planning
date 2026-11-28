@@ -99,8 +99,8 @@ pub fn run() {
             cx.update_window(handle, |_, w, cx| {
                 w.render_frame(cx);
                 assert_eq!(
-                    w.find("step-execution-status").label(),
-                    Some("Waiting for collection"),
+                    app.read(cx).display_task_status(analysis).label(),
+                    "Waiting for collection",
                     "the task detail surface must expose the same barrier"
                 );
             })

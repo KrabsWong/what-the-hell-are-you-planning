@@ -60,6 +60,22 @@ pub fn danger_button(id: impl Into<ElementId>, text: impl Into<SharedString>) ->
 pub fn link_button(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Button {
     button(id, text).link().px_0().self_start().max_w_full()
 }
+/// Readable link-style text for long titles. Unlike `link_button`, it wraps
+/// instead of forcing a compact control surface around the label.
+pub fn link_text(id: impl Into<ElementId>, text: impl Into<SharedString>, cx: &App) -> Button {
+    let text = crate::i18n::tr(text);
+    let tooltip = crate::views::wrapped_tooltip(&text);
+    button(id, text.clone())
+        .link()
+        .h_auto()
+        .px_0()
+        .py_0p5()
+        .self_start()
+        .max_w_full()
+        .whitespace_normal()
+        .tooltip(tooltip)
+        .accessibility_label(text)
+}
 /// Selection control, not an advancing action: the selected state uses the
 /// accent surface/text on a bordered control so it cannot be mistaken for the
 /// one primary action in the group (DESIGN: Selection).

@@ -115,7 +115,6 @@ mod report_publish;
 mod request_planning;
 mod research;
 mod research_app;
-mod research_export;
 mod research_input;
 mod research_input_app;
 #[cfg(feature = "qa")]

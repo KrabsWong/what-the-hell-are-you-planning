@@ -84,8 +84,6 @@ pub(crate) enum LiveCompletion {
         exit_token: Option<u64>,
     },
     Comment {
-        task: u64,
-        body: String,
         undo: crate::scoped_edit::CommentEditUndo,
     },
     Material {
@@ -190,10 +188,6 @@ pub(crate) struct StoppedRun {
 
 #[derive(Clone, Debug)]
 pub(crate) enum DeferredUiAction {
-    ClearComment {
-        task: u64,
-        body: String,
-    },
     FinishSavedExit {
         open: u64,
     },
@@ -303,7 +297,7 @@ impl LiveCompletion {
             Self::TaskEdit { expected, .. } => base
                 .saturating_add(expected.title.capacity())
                 .saturating_add(expected.description.capacity()),
-            Self::Comment { body, .. } => base.saturating_add(body.capacity()),
+            Self::Comment { .. } => base,
             Self::Material { message, .. } => base.saturating_add(message.capacity()),
             Self::MaterialUndo { cleanup } => base.saturating_add(
                 cleanup
@@ -1869,12 +1863,10 @@ impl TaskApp {
                 self.toast = "Task saved to local workspace".into();
                 self.save_feedback = Some(Ok("Task saved to local workspace".into()));
             }
-            LiveCompletion::Comment { task, body, undo } => {
+            LiveCompletion::Comment { undo } => {
                 self.pending_comment_edit = None;
                 self.undo_invalidation = None;
                 self.undo.push_comment(undo);
-                self.deferred_ui
-                    .push(DeferredUiAction::ClearComment { task, body });
                 self.error.clear();
                 self.toast = "Comment added".into();
                 self.save_feedback = Some(Ok("Comment added".into()));
@@ -2095,22 +2087,6 @@ impl TaskApp {
                         }
                         cx.notify();
                     }
-                }
-                DeferredUiAction::ClearComment { task, body } => {
-                    let current = self.comment.read(cx).value().trim().to_string();
-                    if self.selected() == Some(task) && current == body {
-                        self.comment
-                            .update(cx, |state, cx| state.set_value("", window, cx));
-                    }
-                    if self
-                        .navigation
-                        .comments
-                        .get(task)
-                        .is_some_and(|text| text.trim() == body)
-                    {
-                        self.navigation.comments.take(task);
-                    }
-                    self.refresh_research_inputs(window, cx);
                 }
             }
         }

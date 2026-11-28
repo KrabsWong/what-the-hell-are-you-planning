@@ -40,7 +40,6 @@ pub(crate) static CORE_TRANSLATIONS: &[(&str, &str)] = &[
         "[run] Execution time limit reached before this attempt started.",
         "[run] 此尝试开始前已达到执行时间限制。",
     ),
-    ("Activity", "活动"),
     ("Add Files", "添加文件"),
     (
         "Add a description to give this task more context.",
@@ -452,12 +451,6 @@ pub(crate) static CORE_TRANSLATIONS: &[(&str, &str)] = &[
     ("Expand or collapse research steps", "展开或折叠研究步骤"),
     ("Expand or collapse topic", "展开或折叠主题"),
     ("Expand project tasks", "展开项目任务"),
-    ("Export", "导出"),
-    ("Export ZIP", "导出 ZIP"),
-    (
-        "Export completed evidence, analysis and reports as a ZIP. All steps must have current results.",
-        "将已完成的证据、分析和报告导出为 ZIP。所有步骤都必须有最新结果。",
-    ),
     ("FACTS TO VERIFY DURING RESEARCH", "研究中需核实的事实"),
     ("Failed", "失败"),
     ("Fallback model", "后备模型"),
@@ -539,7 +532,6 @@ pub(crate) static CORE_TRANSLATIONS: &[(&str, &str)] = &[
     ("Latest retained run", "最近保留的运行"),
     ("Latest run", "最近一次运行"),
     ("Launch outcome needs checking", "启动结果需要检查"),
-    ("Leave a comment…", "留下评论…"),
     ("Light", "浅色"),
     ("Light · click for Dark", "浅色 · 点击以切换为深色"),
     ("Liquid Glass", "Liquid Glass"),
@@ -981,10 +973,6 @@ pub(crate) static CORE_TRANSLATIONS: &[(&str, &str)] = &[
     ("Running in this app", "在此应用中运行"),
     ("STATUS", "状态"),
     ("Save changes", "保存更改"),
-    (
-        "Save completed evidence, analysis and reports as a ZIP",
-        "将已完成的证据、分析和报告保存为 ZIP",
-    ),
     (
         "Save current model settings to this profile",
         "将当前模型设置保存到此配置文件",

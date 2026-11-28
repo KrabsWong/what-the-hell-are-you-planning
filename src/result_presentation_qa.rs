@@ -70,7 +70,6 @@ pub fn run() {
     atomic_period_navigation_check(&root);
     render_matrix(&root);
     copy_result_check(&root);
-    export_parity_check(&root).unwrap();
     println!("Result presentation QA passed · {}", root.display());
 }
 
@@ -2067,39 +2066,4 @@ fn copy_result_check(root: &Path) {
     assert!(copied.contains("Evidence gaps:"));
     assert!(!copied.contains(research::EVIDENCE_GAP_NOTE));
     println!("Copy result matches reader body and notice");
-}
-
-fn export_parity_check(root: &Path) -> Result<(), String> {
-    let directory = root.join("export-parity");
-    std::fs::create_dir_all(&directory).unwrap();
-    let (store, task, run) = ordinary_fixture(&directory, OrdinaryState::Partial);
-    let expected = present_run(
-        &store,
-        store.runs().iter().find(|value| value.id == run).unwrap(),
-    )
-    .reader_text();
-    let goal = store
-        .task(task)
-        .and_then(|task| task.parent_id)
-        .ok_or("The export fixture lost its goal.")?;
-    let export = store.research_export(goal)?;
-    let (_, bytes) = export
-        .files
-        .iter()
-        .find(|(name, _)| name.starts_with("report/"))
-        .ok_or("The export fixture lost its report file.")?;
-    let markdown = String::from_utf8(bytes.clone()).map_err(|error| error.to_string())?;
-    if !markdown.starts_with(&expected) {
-        return Err(
-            "Exported report does not start with the shared reader body and notice.".into(),
-        );
-    }
-    if markdown.matches(research::EVIDENCE_GAP_NOTICE).count() != 1 {
-        return Err("Exported report duplicated the evidence notice.".into());
-    }
-    if markdown.contains(research::EVIDENCE_GAP_NOTE) {
-        return Err("Exported report leaked the internal evidence marker.".into());
-    }
-    println!("Export report matches reader body and notice");
-    Ok(())
 }

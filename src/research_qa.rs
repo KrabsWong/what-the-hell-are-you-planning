@@ -417,13 +417,14 @@ pub fn run() {
     // A user's later comment invalidates the goal context and every dependent result.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.open_task(goal, w, cx));
-        click_in(w, cx, "detail-scroll", "task-activity-toggle");
-        click_in(w, cx, "detail-scroll", "comment-input");
-        w.input(
-            "Note: focus on the difference between event dates and publication dates.",
-            cx,
-        );
-        click_in(w, cx, "detail-scroll", "post-comment");
+        app.update(cx, |a, cx| {
+            assert!(a.request_task_comment(
+                goal,
+                "Note: focus on the difference between event dates and publication dates.",
+                w,
+                cx
+            ));
+        });
         w.render_frame(cx);
         {
             let state = app.read(cx);

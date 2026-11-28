@@ -843,31 +843,11 @@ pub fn run() {
         w.render_frame(cx);
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
 
-        // Typing focus still follows the real input click after the transition.
+        // The restored step page keeps its live Back control focused after the
+        // transition, without a task-detail text editor.
         open_period_step(w, cx, analysis);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "task-activity-toggle");
-        click_in(w, cx, "detail-scroll", "comment-input");
-        w.input("typing focus preserved", cx);
-        let comment_focus = app.read(cx).comment.read(cx).focus_handle(cx);
-        assert_eq!(
-            w.focused(cx),
-            Some(comment_focus),
-            "the comment editor owns keyboard focus after the real click"
-        );
-        assert!(
-            app.read(cx)
-                .comment
-                .read(cx)
-                .value()
-                .contains("typing focus preserved"),
-            "the restored task page must keep typed input focus"
-        );
-        // Cmd-[ belongs to the text-editing key context while the comment input
-        // is focused; Back navigation still works through its live rendered
-        // control after typing.
-        w.press("cmd-a", cx);
-        w.press("backspace", cx);
+        assert_eq!(w.focused(cx), Some(app.read(cx).focus.clone()));
         w.click("navigation-back", cx);
         w.render_frame(cx);
         assert_eq!(app.read(cx).period_overlay(), Some(fixture.period));
@@ -1067,35 +1047,22 @@ pub fn run() {
     })
     .unwrap();
 
-    // 11. A per-task comment and the Market research composer are preserved,
-    // not treated as unsaved structural edits.
+    // 11. The Market research composer is preserved, not treated as an
+    // unsaved structural edit.
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |a, cx| a.navigate(Scope::All, w, cx));
         w.render_frame(cx);
         let id = app.read(cx).visible_tasks()[0].id;
         w.click(format!("task-row-{id}"), cx);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "task-activity-toggle");
-        click_in(w, cx, "detail-scroll", "comment-input");
-        w.input("preserved note", cx);
         w.click("all", cx);
         w.render_frame(cx);
         assert!(
             w.try_find("dirty-exit-stay").is_none(),
-            "a comment is preserved without a decision"
+            "opening a task without a form needs no decision"
         );
         w.click(format!("task-row-{id}"), cx);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "task-activity-toggle");
-        click_in(w, cx, "detail-scroll", "comment-input");
-        assert!(
-            app.read(cx)
-                .comment
-                .read(cx)
-                .value()
-                .contains("preserved note"),
-            "the per-task comment survives leaving and reopening the task"
-        );
 
         app.update(cx, |a, cx| a.navigate(Scope::Research, w, cx));
         w.render_frame(cx);

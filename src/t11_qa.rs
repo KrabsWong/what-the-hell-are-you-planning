@@ -143,7 +143,7 @@ fn enabled_idle(mode: Appearance, width: f32, height: f32, directory: &Path) {
         });
         w.render_frame(cx);
         assert!(w.try_find("task-execution-status").is_some());
-        assert!(w.try_find("task-activity-toggle").is_some());
+        assert!(w.try_find("task-activity-toggle").is_none());
         assert!(w.try_find("property-Stage").is_none());
         let status = w.find("task-execution-status");
         assert_eq!(status.role(), Some(Role::Label));

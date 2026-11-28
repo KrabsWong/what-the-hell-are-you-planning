@@ -2504,11 +2504,6 @@ impl TaskApp {
                 .gap_2()
                 .items_center()
                 .flex_shrink_0()
-                .when(is_goal && !archived, |d| d.child(self.goal_run_button(id, "approve-research-topic", cx).h(px(28.)).px_2().text_sm()))
-                .when(is_goal && !archived, |d| d.child(button("goal-export", "Export ZIP").h(px(28.)).px_2().text_sm()
-                    .disabled(!self.store.goal_tasks_complete(id) || self.goal_busy(id))
-                    .tooltip(crate::i18n::tr("Export completed evidence, analysis and reports as a ZIP. All steps must have current results."))
-                    .on_click(cx.listener(move |a, _, _, cx| a.export_research_goal(id, cx)))))
                 .when(show_version_history, |d| d.child(
                     button("previous-versions-open", "Version history")
                         .h(px(28.)).px_2().text_sm()
@@ -2793,83 +2788,7 @@ impl TaskApp {
             );
         }
         body = body.when(show_children, |d| d.child(subtask_list));
-        let mut activity_panel = col().gap_2();
-        if self.show_task_activity {
-            for activity in t.activity.iter().rev().take(8) {
-                activity_panel = activity_panel.child(
-                    row()
-                        .items_start()
-                        .child(div().text_color(rgb(colors.muted)).child("·"))
-                        .child(label(activity_display(activity, &t.created_at), cx)),
-                );
-            }
-            for (i, comment) in t.comments.iter().enumerate() {
-                activity_panel = activity_panel.child(
-                    col()
-                        .id(format!("comment-{i}"))
-                        .p_3()
-                        .gap_2()
-                        .rounded(px(GROUP_RADIUS))
-                        .bg(rgb(colors.panel))
-                        .child(
-                            row()
-                                .child(
-                                    div()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .child(selectable_raw(comment.author.clone())),
-                                )
-                                .child(label(
-                                    crate::time_display::timestamp(&comment.created_at),
-                                    cx,
-                                )),
-                        )
-                        .child(selectable_raw(comment.body.clone())),
-                );
-            }
-            activity_panel = activity_panel
-                .child(
-                    div()
-                        .id("comment-input")
-                        .child(Textarea::new(&self.comment))
-                        .map(observed),
-                )
-                .child(row().justify_end().child(
-                    primary_button("post-comment", "Comment").on_click(cx.listener(
-                        move |this, _, w, cx| {
-                            let text = this.comment.read(cx).value().to_string();
-                            if text.trim().is_empty() {
-                                return;
-                            }
-                            this.request_task_comment(id, &text, w, cx);
-                        },
-                    )),
-                ));
-        }
-        body = body.child(
-            col()
-                .border_t_1()
-                .border_color(rgb(colors.line))
-                .pt_2()
-                .gap_2()
-                .child(
-                    row_button("task-activity-toggle", "Activity")
-                        .self_start()
-                        .px_0()
-                        .text_color(rgb(colors.muted))
-                        .icon(if self.show_task_activity {
-                            assets::IconName::ChevronDown
-                        } else {
-                            assets::IconName::ChevronRight
-                        })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.show_task_activity = !this.show_task_activity;
-                            cx.notify();
-                        })),
-                )
-                .when(self.show_task_activity, |d| d.child(activity_panel)),
-        );
         let mut properties = col().w_full().min_w_0().gap_2();
-        properties = properties.child(self.step_execution_panel(id, cx));
         let archived = self.store.task_is_archived(id);
         let has_result = t
             .research

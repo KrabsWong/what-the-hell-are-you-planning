@@ -780,7 +780,6 @@ pub fn goal_actions() {
     store.sync_goal_progress(goal);
     let topic = store.task(goal).unwrap().topic_id.unwrap();
     let report = *steps.last().unwrap();
-    assert!(store.research_export(goal).is_ok());
     let unfinished = store
         .create_research_goal_in_topic("Unfinished goal".into(), "Scope".into(), 1, Some(topic))
         .unwrap();
@@ -806,7 +805,6 @@ pub fn goal_actions() {
     let handle = window.into();
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        assert!(w.find(format!("topic-export-{goal}")).visible());
         w.click(format!("topic-goal-{unfinished}"), cx);
         assert_eq!(app.read(cx).selected(), Some(unfinished));
         assert_eq!(app.read(cx).task_result_context(), None);
@@ -903,7 +901,6 @@ pub fn goal_actions() {
             cx.notify();
         });
         w.render_frame(cx);
-        assert!(w.try_find(format!("topic-export-{goal}")).is_none());
         assert!(w.try_find(format!("topic-report-{goal}")).is_none());
     })
     .unwrap();
@@ -1013,7 +1010,7 @@ pub fn goal_actions() {
         })
         .unwrap();
     }
-    println!("Topic report navigation and completed-only export shortcuts passed");
+    println!("Topic report navigation passed");
 }
 
 /// Long topic names must remain readable in the project list's topic directory.

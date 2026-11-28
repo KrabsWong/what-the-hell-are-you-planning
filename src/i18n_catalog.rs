@@ -14,7 +14,6 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
     ("3 · Search runtime", "3 · 搜索运行时"),
     ("ARCHIVED", "已归档"),
     ("AWAITING GOAL APPROVAL", "等待目标批准"),
-    ("Activity", "活动"),
     ("Advanced limits", "高级限制"),
     ("Agent & models", "代理与模型"),
     ("Agent connections", "代理连接"),
@@ -220,13 +219,7 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
     ),
     ("Executable", "可执行文件"),
     ("Execution", "执行"),
-    ("Export", "导出"),
     ("Export Markdown", "导出 Markdown"),
-    ("Export ZIP", "导出 ZIP"),
-    (
-        "Export completed evidence, analysis and reports as a ZIP. All steps must have current results.",
-        "将已完成的证据、分析和报告导出为 ZIP。所有步骤都必须有最新结果。",
-    ),
     ("FACTS TO VERIFY DURING RESEARCH", "研究中需核实的事实"),
     ("Fallback model", "后备模型"),
     ("Feature, UI", "功能、界面"),
@@ -269,7 +262,6 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
         "围绕公司、主题或问题，将相关研究目标放在一起。",
     ),
     ("Latest run", "最近一次运行"),
-    ("Leave a comment…", "留下评论…"),
     ("Liquid Glass", "Liquid Glass"),
     ("Live logs", "实时日志"),
     (
@@ -495,10 +487,6 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
     ("SEARCH IN", "搜索范围"),
     ("STATUS", "状态"),
     ("Save changes", "保存更改"),
-    (
-        "Save completed evidence, analysis and reports as a ZIP",
-        "将已完成的证据、分析和报告保存为 ZIP",
-    ),
     ("Save folder", "保存文件夹"),
     ("Save for later", "稍后保存"),
     ("Save name", "保存名称"),
@@ -942,15 +930,9 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
     ),
     ("Copy. {title}", "副本：{title}"),
     ("Copy. {topic_value}", "副本：{topic_value}"),
-    ("Could not copy '{}': {e}", "无法复制“{}”：{e}"),
     (
         "Could not copy legacy workspace: {e}. Original files were preserved.",
         "无法复制旧版工作区：{e}。原始文件已保留。",
-    ),
-    ("Could not create ZIP: {e}", "无法创建 ZIP：{e}"),
-    (
-        "Could not create a private notification file: {error}",
-        "无法创建私有通知文件：{error}",
     ),
     (
         "Could not encode notification: {error}",
@@ -972,8 +954,6 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
         "Could not open saved report content: {error}",
         "无法打开已保存的报告内容：{error}",
     ),
-    ("Could not prepare export: {e}", "无法准备导出：{e}"),
-    ("Could not save the ZIP file: {e}", "无法保存 ZIP 文件：{e}"),
     (
         "Could not select files: {other:?}",
         "无法选择文件：{other:?}",
@@ -1158,7 +1138,6 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
     ("Report {id}", "报告 {id}"),
     ("Report {task}", "报告 {task}"),
     ("Request {} · {}", "请求 {} · {}"),
-    ("Rerun prerequisite · {title}", "重新运行前置条件 · {title}"),
     (
         "Research complete · {completed}/{total} steps",
         "研究已完成 · {completed}/{total} 个步骤",
@@ -1167,8 +1146,6 @@ pub(crate) static SIMPLIFIED_CHINESE: &[(&str, &str)] = &[
         "Research complete · {completed}/{} steps",
         "研究已完成 · {completed}/{} 个步骤",
     ),
-    ("Research exported to {}", "研究已导出到 {}"),
-    ("Research goal · {id}", "研究目标 · {id}"),
     (
         "Research progress · {completed}/{} steps",
         "研究进度 · {completed}/{} 个步骤",

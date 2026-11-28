@@ -301,23 +301,17 @@ print(json.dumps({'type':'text','part':{'text':json.dumps(result)}}),flush=True)
         w.render_frame(cx);
         app.update(cx, |a, cx| a.open_task(goals[1].1[0], w, cx));
         w.render_frame(cx);
-        assert!(w.try_find("step-execution-reason").is_some());
         assert!(w.try_find("step-run").is_some());
         app.update(cx, |a, cx| a.open_task(goals[3].1[0], w, cx));
         w.render_frame(cx);
         assert!(w.try_find("step-check-session").is_some());
-        w.click("step-run", cx);
+        assert_eq!(w.find("step-run").disabled(), Some(true));
         assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         // All entry points share the same detail panel. Dependency blockers cannot launch.
         app.update(cx, |a, cx| a.open_task(goals[1].1[1], w, cx));
         w.render_frame(cx);
         assert!(w.try_find("step-execution-panel").is_some());
-        assert!(w.try_find("step-execution-reason").is_some());
-        assert!(
-            w.try_find("step-rerun-prerequisite").is_some(),
-            "a blocked step must offer an explicit prerequisite replay path"
-        );
-        w.click("step-run", cx);
+        assert_eq!(w.find("step-run").disabled(), Some(true));
         assert_eq!(app.read(cx).store.runs().len(), runs_before_navigation);
         w.click(format!("step-prerequisite-{}", goals[1].1[0]), cx);
         w.render_frame(cx);

@@ -2,7 +2,7 @@
 
 This tool breaks a research goal into tasks that depend on one another. It uses a local OpenCode or Codex agent, choosing the agent and model for each stage, and keeps run logs, materials, reports and sources. You can also turn repeated information checks into scheduled automations. Web research is carried out by the local ego(lite) Space.
 
-Everyday flow: **choose a project → review a goal → Run goal → read the results in Research results**. Recurring tasks go through **Automations → New automation**, and you check each period's results in **Automation results**. When you need more evidence, open the task, add PDFs, screenshots or comments, and then continue the research.
+Everyday flow: **choose a project → review a goal → Run goal → read the results in Research results**. Recurring tasks go through **Automations → New automation**, and you check each period's results in **Automation results**. When you need more evidence, open the task and add PDFs or screenshots, and then continue the research.
 
 The task page puts running, materials, status and results first. A finished research step opens its result with **View final report** or **View latest result** in the task action row, and **Run again** runs it once more. The right properties panel is removed: status and topic sit in the header, and the topic project is in the goal body. The effective model stays in the bottom run metadata. Labels, stage changes, execution settings, browser Spaces, research-settings and working-folder buttons are no longer shown in task details. Priority, cycle and bucket are not shown anywhere.
 
@@ -99,7 +99,7 @@ Create a project with **Projects → +** in the sidebar, for example "Semiconduc
 1. You can optionally fill in the scope, market, time span and questions you care about. If you leave them empty, planning is based on the project name. Save the project scope with **Save scope**.
 2. The project's working folder has already been assigned; set up the global Agent and model in **Settings → Agent & models**. If you want separate settings for planning, open **Research settings…** from the Market research page and choose the Plan override. Project topic planning and later research step planning share whatever configuration Plan is using.
 3. Click **Generate topics** and the Agent produces 1–8 separate research topics, each with its own scope, evidence requirements and deliverables. You can follow the generation with live logs in **Research results**, or cancel it.
-4. Planning then runs in the background. On success the app keeps your current page and reports how many research goals were added to **Backlog**, with a prompt to open the project to review and approve them. Every topic lands in **Backlog / Awaiting approval**, and no collection or analysis starts. Open a goal row to edit its scope or add comments, PDFs or screenshots.
+4. Planning then runs in the background. On success the app keeps your current page and reports how many research goals were added to **Backlog**, with a prompt to open the project to review and approve them. Every topic lands in **Backlog / Awaiting approval**, and no collection or analysis starts. Open a goal row to edit its scope or add PDFs or screenshots.
 5. Open the goals you want to run. **Run goal** approves the current plan and starts execution directly; goals you leave stay in Backlog. You can also cancel or archive a goal.
 6. Open an approved topic and click **Plan research steps**, and the Agent creates collection, analysis and report tasks for it, with their dependencies. Review them, then run them with **Run one step / Continue research**.
 
@@ -128,7 +128,7 @@ In **Market research**, fill in the goal title, background and scope. For exampl
 
 Be clear about the research year, market, time range and key questions. Click **Create research goal** to open the parent task; you can add materials first, then click **Plan research steps**.
 
-The real planning model produces 3–12 sub-tasks with dependencies between them. Check each task's scope and description, and edit it or add comments as needed. Dependencies follow the generated plan, and there is currently no visual tool for rewiring them; an existing plan is not regenerated over your tasks.
+The real planning model produces 3–12 sub-tasks with dependencies between them. Check each task's scope and description, and edit it as needed. Dependencies follow the generated plan, and there is currently no visual tool for rewiring them; an existing plan is not regenerated over your tasks.
 
 ## 4. Running and checking
 
@@ -179,19 +179,6 @@ Each result entry says what it is: **Final report**, **Partial period reports**,
 
 Besides finishing successfully, a research result also has to pass a structure check; only `complete` finishes the task, while `blocked` stops the chain and explains what needs handling. The app does not replace fact-checking, does not trade automatically and gives no guarantee of reliability. What the Agent is allowed to do is decided by the Agent you installed; the instructions inside the app are not system-level isolation.
 
-### Export a complete research package
-
-When every research step under a Goal has finished and the results match the current inputs, click **Export ZIP** on the Goal page and choose where to save it. The ZIP contains:
-
-- `evidence/`: the full Markdown from each evidence collection step.
-- `analysis/`: the full Markdown from each analysis step.
-- `report/`: the full Markdown from the final report step.
-- The cited sources at the end of each Markdown document: the source names, links and publication dates saved by that step.
-- `README.md`: an explanation of the research, an index of the documents, and how tasks map to run records.
-- `resources/`: the original PDFs/images that you uploaded to that Goal or its research steps, and those linked to the research results (only created when there are attachments). The same attachment is included only once, files with the same name get numbers so nothing is overwritten, and the README keeps the original names and links.
-
-Document names include the type, task number and title. The export uses the complete results saved in the app, is not affected by anything cut off in the interface or logs, and does not include failed attempts, technical logs or other files in the working folder. If the research is unfinished or its inputs have changed, finish or update it before exporting. If a linked attachment is missing or cannot be read, the export reports an error rather than quietly leaving it out.
-
 ## 5. Scheduled automations
 
 **Automations** in the sidebar is a separate area with **All automations** (the list of definitions) and **Automation results** (results for every period), kept apart from research projects, Topics and Research results. The Automation results header has an automation filter that narrows the list to one automation's periods, and the heading shows how many of the total are shown.
@@ -221,7 +208,7 @@ While no one is watching, if it meets a login, a CAPTCHA or a request to take ov
 
 1. Open the sub-task that needs more evidence, go to **Materials**, and click **Add Files** or drop in a PDF, PNG, JPEG or WebP; after copying an image, click in the Materials area and press **⌘V**.
 2. Wait for the import to finish. Only the original file is copied into `workspace/attachments/` in the workspace; no OCR or PDF extraction happens locally. On the next run it is passed to whichever Agent is selected: OpenCode uses `--file`; Codex gets images as `--image`, and other files are given to the model as a local path in the prompt so it can read them itself.
-3. You can add a comment explaining where the material came from, the date it refers to, which figures you want checked, and which earlier conclusions need adjusting. Screenshots are best when they still show the title, date, units and source.
+3. You can describe where the material came from, the date it refers to, which figures you want checked, and which earlier conclusions need adjusting in the task description. Screenshots are best when they still show the title, date, units and source.
 4. Changing materials automatically marks the old results of that task and of everything downstream of it as **Needs refresh**. Upstream collection that has already finished is unaffected. Adding materials to a parent goal affects the whole goal chain. If an edit changes an approved Goal's research inputs, the Goal returns to review before further work can start; its earlier reports remain available as historical results.
 5. Go back to the parent goal and click **Continue research**. Uploading never calls a model or uses up quota by itself. Re-analysis starts from the earliest outdated task, and the new results are then passed on to the reports that follow.
 6. In the new run's **Result**, check the material names, the PDF page numbers/screenshot pages and the updated conclusions; the old report and the old input snapshot are still kept, so you can compare them.

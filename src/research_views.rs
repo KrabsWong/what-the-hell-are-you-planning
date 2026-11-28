@@ -770,26 +770,37 @@ impl TaskApp {
         let colors = palette(cx);
         let task = self.store.task(id).unwrap();
         let research = task.research.as_ref().unwrap();
-        let children = self.store.research_children(id);
-        let complete = !children.is_empty()
-            && children
-                .iter()
-                .all(|child| self.store.research_result_available_or_pending(*child));
         let next_model = self.store.research_model(research.kind);
         let archived = self.store.task_is_archived(id);
-        let history = archived.then(|| crate::archive_presentation::goal_history(&self.store, id));
         let mut panel = col().gap_2();
         if !archived {
-            panel = panel.child(execution_metadata(
-                "Next run".into(),
-                self.store.research_agent(research.kind).to_string(),
-                if next_model.is_empty() {
-                    "Not configured"
-                } else {
-                    next_model
-                },
-                cx,
-            ));
+            panel = panel.child(
+                row()
+                    .id("step-execution-panel")
+                    .w_full()
+                    .min_w_0()
+                    .flex_wrap()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(execution_metadata(
+                        "Next run".into(),
+                        self.store.research_agent(research.kind).to_string(),
+                        if next_model.is_empty() {
+                            "Not configured"
+                        } else {
+                            next_model
+                        },
+                        cx,
+                    ))
+                    .when(research.kind != ResearchKind::Goal, |row| {
+                        row.child(self.step_run_button(id, "step-run", cx))
+                    })
+                    .when(research.kind == ResearchKind::Goal, |row| {
+                        row.child(self.goal_run_button(id, "approve-research-topic", cx))
+                    })
+                    .map(observed),
+            );
         }
         if archived {
             panel = panel.child(
@@ -838,106 +849,8 @@ impl TaskApp {
             ));
         }
         if research.kind == ResearchKind::Goal {
-            let completed = history
-                .as_ref()
-                .map(|history| history.completed_steps)
-                .unwrap_or_else(|| {
-                    children
-                        .iter()
-                        .filter(|child| self.store.research_result_available_or_pending(**child))
-                        .count()
-                });
-            let complete = history
-                .as_ref()
-                .map(|history| history.complete)
-                .unwrap_or(complete);
-            let status = if children.is_empty() {
-                "Research steps not planned yet".into()
-            } else if archived {
-                format!(
-                    "Archived history · {completed}/{} steps with retained validated results",
-                    children.len()
-                )
-            } else if complete {
-                format!("Research complete · {completed}/{} steps", children.len())
-            } else {
-                format!("Research progress · {completed}/{} steps", children.len())
-            };
-            panel = panel.child(
-                row()
-                    .flex_wrap()
-                    .justify_between()
-                    .gap_2()
-                    .child(muted(status, cx))
-                    .child(
-                        row()
-                            .flex_wrap()
-                            .gap_2()
-                            .when(!archived && !children.is_empty(), |d| {
-                                d.child(self.goal_run_button(id, "approve-research-topic", cx))
-                            }),
-                    ),
-            );
         } else {
-            let has_dependencies = !research.depends_on.is_empty();
-            panel = panel
-                .when(has_dependencies, |d| {
-                    d.border_t_1()
-                        .border_b_1()
-                        .border_color(rgb(colors.line))
-                        .py_2()
-                })
-                .when(has_dependencies, |d| {
-                    d.child(
-                        row()
-                            .flex_wrap()
-                            .justify_between()
-                            .child(muted("Upstream research", cx)),
-                    )
-                })
-                .when(has_dependencies, |d| {
-                    d.child(label("This task uses the results of the steps below.", cx))
-                });
-            let waiting = research
-                .depends_on
-                .iter()
-                .filter(|dep| self.store.research_result(**dep).is_none())
-                .count();
-            let loading = research
-                .depends_on
-                .iter()
-                .filter(|dep| {
-                    self.store.research_result(**dep).is_none()
-                        && self.store.research_result_body_pending(**dep).is_some()
-                })
-                .count();
-            if waiting > 0 {
-                let message = if loading == waiting {
-                    format!("Loading saved results from {waiting} earlier step(s)…")
-                } else {
-                    format!("Waiting for {waiting} earlier step(s) before this task can start.")
-                };
-                panel = panel.child(label(message, cx));
-            }
-            for dep in &research.depends_on {
-                let dep = *dep;
-                let title = self
-                    .store
-                    .task(dep)
-                    .map(|t| t.title.as_str())
-                    .unwrap_or("Missing dependency");
-                let ready = self.store.research_result(dep).is_some();
-                panel = panel.child(
-                    link_button(format!("research-dependency-{dep}"), title.to_string())
-                        .icon(if ready {
-                            assets::IconName::Check
-                        } else {
-                            assets::IconName::Circle
-                        })
-                        .disabled(self.store.task(dep).is_none())
-                        .on_click(cx.listener(move |this, _, w, cx| this.open_task(dep, w, cx))),
-                );
-            }
+            panel = panel.child(self.step_recovery_actions(id, cx));
         }
         panel.into_any_element()
     }

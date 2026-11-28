@@ -409,7 +409,6 @@ fn detail_and_restore(directory: &Path, mode: Appearance, width: f32, height: f3
         assert!(w.find("archived-research-badge").visible());
         assert!(w.find(format!("restore-archived-{goal}")).visible());
         assert!(w.try_find("goal-resume").is_none());
-        assert!(w.try_find("goal-export").is_none());
         assert!(w.try_find("approve-research-topic").is_none());
         assert!(w.try_find("regenerate-report").is_none());
         assert_eq!(w.find("property-Topic project").disabled(), Some(true));

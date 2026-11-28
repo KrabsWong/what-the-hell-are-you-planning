@@ -469,7 +469,6 @@ impl TaskApp {
         }
         // Commit the whole destination only after the read ends. Do not defer
         // again on failure: its report-specific retry must remain reachable.
-        self.park_current_comment(cx);
         self.show_run_details = false;
         self.show_run_result = true;
         if let Some(task) = pending.context {

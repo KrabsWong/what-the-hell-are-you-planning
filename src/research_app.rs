@@ -1070,7 +1070,6 @@ impl TaskApp {
         if self.defer_result_navigation(run_id, context, false, None, cx) {
             return;
         }
-        self.park_current_comment(cx);
         self.show_run_details = false;
         self.show_run_result = true;
         let context = self.result_context_for_run(run_id);

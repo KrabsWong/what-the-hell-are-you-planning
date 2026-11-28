@@ -458,8 +458,6 @@ impl TaskApp {
                 }
             };
             let completion = crate::live_save_app::LiveCompletion::Comment {
-                task: prepared.task,
-                body: prepared.body.clone(),
                 undo: applied.undo.clone(),
             };
             #[cfg(feature = "qa")]
@@ -482,11 +480,6 @@ impl TaskApp {
                 Ok(crate::live_save_app::SaveAcceptance::Durable) => {
                     self.undo.push_comment(applied.undo.clone());
                     if let Some(window) = window {
-                        let current = self.comment.read(cx).value().trim().to_string();
-                        if self.selected() == Some(prepared.task) && current == prepared.body {
-                            self.comment
-                                .update(cx, |state, cx| state.set_value("", window, cx));
-                        }
                         self.refresh_research_inputs(window, cx);
                     }
                     self.error.clear();
@@ -513,8 +506,6 @@ impl TaskApp {
             }
         };
         let completion = crate::live_save_app::LiveCompletion::Comment {
-            task: prepared.task,
-            body: prepared.body.clone(),
             undo: applied.undo.clone(),
         };
         if let Err(error) = self.live_can_accept_primary() {
@@ -539,21 +530,6 @@ impl TaskApp {
             self.adopt_saved_store(staged);
             self.pending_comment_edit = None;
             if let Some(window) = window {
-                // Clear only the exact draft this save owned. A newer draft typed
-                // after a failed retry, or another task's cached comment, survives.
-                let current = self.comment.read(cx).value().trim().to_string();
-                if self.selected() == Some(prepared.task) && current == prepared.body {
-                    self.comment
-                        .update(cx, |state, cx| state.set_value("", window, cx));
-                }
-                if self
-                    .navigation
-                    .comments
-                    .get(prepared.task)
-                    .is_some_and(|text| text.trim() == prepared.body)
-                {
-                    self.navigation.comments.take(prepared.task);
-                }
                 self.refresh_research_inputs(window, cx);
             }
             self.error.clear();

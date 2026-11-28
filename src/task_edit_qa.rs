@@ -30,7 +30,7 @@ pub fn run() {
     comment_save_and_undo(&root);
     comment_failed_save_retry(&root);
     comment_footer_retry_new_impact(&root);
-    comment_retry_cross_task_cache(&root);
+    comment_retry_after_switch(&root);
     stage_property_and_undo(&root);
     reopen_step_and_undo(&root);
     material_add_remove_undo_ui(&root);
@@ -342,13 +342,12 @@ fn comment_save_and_undo(root: &Path) {
     let runs: Vec<_> = store.runs().to_vec();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
         app.open_task(goal, w, cx);
-        app.show_task_activity = true;
-        app.comment
-            .update(cx, |state, cx| state.set_value("Add this evidence", w, cx));
     });
     cx.update_window(handle, |_, w, cx| {
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "post-comment");
+        app.update(cx, |a, cx| {
+            assert!(a.request_task_comment(goal, "Add this evidence", w, cx));
+        });
         w.render_frame(cx);
         assert!(
             app.read(cx).research_save_is_pending(),
@@ -399,14 +398,13 @@ fn comment_failed_save_retry(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
         app.open_task(goal, w, cx);
-        app.show_task_activity = true;
-        app.comment
-            .update(cx, |state, cx| state.set_value("Retry this comment", w, cx));
     });
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, _| app.storage = None);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "post-comment");
+        app.update(cx, |a, cx| {
+            assert!(a.request_task_comment(goal, "Retry this comment", w, cx));
+        });
         w.render_frame(cx);
         w.click("research-save-impact-confirm", cx);
         w.render_frame(cx);
@@ -423,8 +421,6 @@ fn comment_failed_save_retry(root: &Path) {
         app.update(cx, |app, cx| {
             app.store.task_mut(steps[1]).unwrap().title = "Sibling changed after failure".into();
             app.store.reconcile_goal_approvals();
-            app.comment
-                .update(cx, |state, cx| state.set_value("Newer local draft", w, cx));
             app.storage = Some(Storage::new(path.clone()));
             app.persist_if_changed(true);
         });
@@ -465,11 +461,6 @@ fn comment_failed_save_retry(root: &Path) {
             app.store.task(goal).unwrap().activity.len(),
             activity_before + 2
         );
-        assert_eq!(
-            app.comment.read(cx).value(),
-            "Newer local draft",
-            "a newer unsaved comment draft survives the old-body retry"
-        );
         let loaded = Storage::new(path.clone()).load().unwrap().unwrap();
         assert_eq!(loaded.task(goal).unwrap().comments.len(), 1);
         assert_eq!(
@@ -494,15 +485,13 @@ fn comment_footer_retry_new_impact(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
         app.open_task(task, w, cx);
-        app.show_task_activity = true;
-        app.comment.update(cx, |state, cx| {
-            state.set_value("Footer retry comment", w, cx)
-        });
     });
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, _| app.storage = None);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "post-comment");
+        app.update(cx, |a, cx| {
+            assert!(a.request_task_comment(task, "Footer retry comment", w, cx));
+        });
         w.render_frame(cx);
         let app = app.read(cx);
         assert!(
@@ -580,7 +569,7 @@ fn comment_footer_retry_new_impact(root: &Path) {
         .unwrap();
 }
 
-fn comment_retry_cross_task_cache(root: &Path) {
+fn comment_retry_after_switch(root: &Path) {
     let directory = root.join("comment-cross-task");
     std::fs::create_dir_all(&directory).unwrap();
     let (mut store, _, _) = workspace(&directory);
@@ -594,14 +583,13 @@ fn comment_retry_cross_task_cache(root: &Path) {
     Storage::new(path.clone()).save(&store).unwrap();
     let (mut cx, handle, app) = with_app(store, &path, |app, w, cx| {
         app.open_task(task_a, w, cx);
-        app.show_task_activity = true;
-        app.comment
-            .update(cx, |state, cx| state.set_value("Cache this comment", w, cx));
     });
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, _| app.storage = None);
         w.render_frame(cx);
-        click_in(w, cx, "detail-scroll", "post-comment");
+        app.update(cx, |a, cx| {
+            assert!(a.request_task_comment(task_a, "Cache this comment", w, cx));
+        });
         w.render_frame(cx);
         assert!(app.read(cx).pending_comment_edit.is_some());
         assert!(!app.read(cx).research_save_is_pending());
@@ -610,39 +598,21 @@ fn comment_retry_cross_task_cache(root: &Path) {
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, cx| {
             app.open_task(task_b, w, cx);
-            app.show_task_activity = true;
-            app.comment
-                .update(cx, |state, cx| state.set_value("B draft", w, cx));
             app.storage = Some(Storage::new(path.clone()));
             app.storage_error = "Retry the pending comment save".into();
         });
         w.render_frame(cx);
-        assert_eq!(
-            app.read(cx).navigation.comments.get(task_a),
-            Some("Cache this comment")
-        );
         w.click("retry-save", cx);
         w.render_frame(cx);
         let app = app.read(cx);
         assert_eq!(app.store.task(task_a).unwrap().comments.len(), 1);
         assert_eq!(app.store.task(task_b).unwrap().comments.len(), 0);
-        assert!(app.navigation.comments.get(task_a).is_none());
-        assert_eq!(
-            app.comment.read(cx).value(),
-            "B draft",
-            "another task's live editor is preserved"
-        );
     })
     .unwrap();
     cx.update_window(handle, |_, w, cx| {
         app.update(cx, |app, cx| app.open_task(task_a, w, cx));
         w.render_frame(cx);
         let app = app.read(cx);
-        assert_eq!(
-            app.comment.read(cx).value(),
-            "",
-            "the saved origin draft does not reappear"
-        );
         assert_eq!(app.store.task(task_a).unwrap().comments.len(), 1);
     })
     .unwrap();

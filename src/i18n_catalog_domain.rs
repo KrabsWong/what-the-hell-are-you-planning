@@ -547,16 +547,6 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
         "无法连接模型服务。请检查网络连接和提供商连接，然后重试此步骤。",
     ),
     ("Could not connect to the site", "无法连接到站点"),
-    ("Could not copy '{}': {e}", "无法复制“{}”：{e}"),
-    ("Could not create ZIP: {e}", "无法创建 ZIP：{e}"),
-    (
-        "Could not create a private notification file: {error}",
-        "无法创建私有通知文件：{error}",
-    ),
-    (
-        "Could not create the research ZIP archive.",
-        "无法创建研究 ZIP 归档。",
-    ),
     (
         "Could not deliver the complete prompt to Codex.",
         "无法将完整提示发送给 Codex。",
@@ -589,18 +579,7 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
         "Could not open saved report content: {error}",
         "无法打开已保存的报告内容：{error}",
     ),
-    (
-        "Could not open the export save dialog.",
-        "无法打开导出保存对话框。",
-    ),
-    ("Could not prepare export: {e}", "无法准备导出：{e}"),
-    ("Could not resolve the proxy", "无法解析代理"),
     ("Could not resolve the site hostname", "无法解析站点主机名"),
-    ("Could not save the ZIP file: {e}", "无法保存 ZIP 文件：{e}"),
-    (
-        "Could not start task {id}: {reason}",
-        "无法启动任务 {id}：{reason}",
-    ),
     (
         "Could not start the notification client: {error}",
         "无法启动通知客户端：{error}",
@@ -702,14 +681,8 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
         "Expected results must be at most 12,000 bytes.",
         "预期结果不得超过 12,000 字节。",
     ),
-    ("Exporting research ZIP…", "正在导出研究 ZIP…"),
-    ("Failed", "失败"),
     ("Fetching repository", "正在获取仓库"),
     ("Final report", "最终报告"),
-    (
-        "Finish all research steps with current results before exporting this goal.",
-        "导出此目标前，请先完成所有研究步骤并获得最新结果。",
-    ),
     (
         "Finish topic planning before publishing. Current planning status: {status}.",
         "发布前请先完成主题规划。当前规划状态：{status}。",
@@ -985,10 +958,6 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
         "只有研究步骤可以重新打开。",
     ),
     (
-        "Only this step stays disabled until prerequisites finish: {}. Use Rerun prerequisite to re-run the upstream work.",
-        "只有此步骤会保持禁用，直到前置条件完成：{}。请使用“重新运行前置项”重新执行上游工作。",
-    ),
-    (
         "Only unstarted plans whose goals are all in Backlog can be regenerated.",
         "只有未开始且所有目标都在待办池中的计划可以重新生成。",
     ),
@@ -1183,7 +1152,6 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
         "Request saved · review the research understanding when ready",
         "请求已保存 · 准备好后请查看研究理解",
     ),
-    ("Rerun prerequisite · {title}", "重新运行前置项 · {title}"),
     ("Research", "研究"),
     (
         "Research completed · final reports saved locally",
@@ -1201,8 +1169,6 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
         "Research dependencies must remain inside this goal and refer to active steps.",
         "研究依赖项必须保留在此目标内，并指向活动步骤。",
     ),
-    ("Research exported to {}", "研究已导出到 {}"),
-    ("Research goal", "研究目标"),
     ("Research goal not found.", "未找到研究目标。"),
     (
         "Research inputs changed before preparing prior report files.",
@@ -1414,10 +1380,6 @@ pub(crate) static DOMAIN_TRANSLATIONS: &[(&str, &str)] = &[
     (
         "Saving will start when persistence is ready.",
         "持久化就绪后将开始保存。",
-    ),
-    (
-        "Select a research goal to export.",
-        "请选择要导出的研究目标。",
     ),
     (
         "Selected goals are already queued or completed",

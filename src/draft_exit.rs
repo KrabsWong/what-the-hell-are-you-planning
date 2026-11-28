@@ -9,8 +9,6 @@
 //! must come from a real save entry point: a decision proceeds only after a
 //! confirmed save, never on "no error observed".
 
-use std::collections::BTreeMap;
-
 use crate::automation_views::AutomationDraft;
 use crate::navigation_context::{DismissibleSurface, NavigationTarget};
 
@@ -27,10 +25,6 @@ pub(crate) enum DraftSurface {
     /// The project research request composer, topic replan and automation
     /// request composer.
     PlanningRequest,
-    /// The inline comment composer of one task. Preserved per task.
-    Comment {
-        task: u64,
-    },
     /// The inline composer on the Market research page. Preserved as a page
     /// draft (destination + text).
     ResearchComposer,
@@ -59,7 +53,7 @@ pub(crate) fn draft_class(surface: DraftSurface) -> DraftClass {
         DraftSurface::TaskEdit { .. }
         | DraftSurface::AutomationWizard { .. }
         | DraftSurface::PlanningRequest => DraftClass::Decision,
-        DraftSurface::Comment { .. } | DraftSurface::ResearchComposer => DraftClass::Preserved,
+        DraftSurface::ResearchComposer => DraftClass::Preserved,
     }
 }
 
@@ -70,7 +64,7 @@ pub(crate) fn decision_surface(surface: DraftSurface) -> Option<DecisionSurface>
             Some(DecisionSurface::AutomationWizard { editing })
         }
         DraftSurface::PlanningRequest => Some(DecisionSurface::PlanningRequest),
-        DraftSurface::Comment { .. } | DraftSurface::ResearchComposer => None,
+        DraftSurface::ResearchComposer => None,
     }
 }
 
@@ -104,44 +98,6 @@ pub(crate) fn automation_draft_dirty(
 /// replan text is a change.
 pub(crate) fn text_draft_dirty(baseline: &str, current: &str) -> bool {
     baseline.trim() != current.trim()
-}
-
-/// An inline comment has no baseline: any non-empty text is unsaved input.
-pub(crate) fn comment_draft_dirty(current: &str) -> bool {
-    !current.trim().is_empty()
-}
-
-/// Per-task text slots so switching tasks never drops a typed comment.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PerTaskText {
-    values: BTreeMap<u64, String>,
-}
-
-impl PerTaskText {
-    pub(crate) fn set(&mut self, task: u64, text: impl Into<String>) {
-        let text = text.into();
-        if text.trim().is_empty() {
-            self.values.remove(&task);
-        } else {
-            self.values.insert(task, text);
-        }
-    }
-
-    pub(crate) fn get(&self, task: u64) -> Option<&str> {
-        self.values.get(&task).map(String::as_str)
-    }
-
-    pub(crate) fn take(&mut self, task: u64) -> Option<String> {
-        self.values.remove(&task)
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.values.is_empty()
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.values.len()
-    }
 }
 
 /// A preserved page draft for the Market research composer. Destination and
@@ -407,22 +363,6 @@ mod tests {
     }
 
     #[test]
-    fn comments_are_preserved_per_task() {
-        let mut comments = PerTaskText::default();
-        assert!(!comment_draft_dirty("  "));
-        assert!(comment_draft_dirty("A note"));
-        comments.set(1, "Task one note");
-        comments.set(2, "Task two note");
-        assert_eq!(comments.get(1), Some("Task one note"));
-        assert_eq!(comments.get(2), Some("Task two note"));
-        comments.set(1, "   ");
-        assert_eq!(comments.get(1), None);
-        assert_eq!(comments.len(), 1);
-        assert_eq!(comments.take(2).as_deref(), Some("Task two note"));
-        assert!(comments.is_empty());
-    }
-
-    #[test]
     fn decision_classes_match_the_approved_policy() {
         assert_eq!(
             draft_class(DraftSurface::TaskEdit { task: 1 }),
@@ -437,14 +377,9 @@ mod tests {
             DraftClass::Decision
         );
         assert_eq!(
-            draft_class(DraftSurface::Comment { task: 1 }),
-            DraftClass::Preserved
-        );
-        assert_eq!(
             draft_class(DraftSurface::ResearchComposer),
             DraftClass::Preserved
         );
-        assert_eq!(decision_surface(DraftSurface::Comment { task: 1 }), None);
         assert_eq!(decision_surface(DraftSurface::ResearchComposer), None);
     }
 

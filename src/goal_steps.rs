@@ -265,10 +265,8 @@ impl TaskApp {
         let (title, disabled, hint) = self.goal_run_state(goal);
         button(element, title)
             .disabled(disabled)
-            .tooltip(crate::i18n::tr(hint))
-            .on_click(cx.listener(move |a, _, _, cx| {
-                a.approve_and_run_research_topic(goal, cx)
-            }))
+            .tooltip(crate::i18n::tr_string(hint))
+            .on_click(cx.listener(move |a, _, _, cx| a.approve_and_run_research_topic(goal, cx)))
     }
     pub(crate) fn step_run_button(
         &self,

@@ -582,7 +582,26 @@ impl TaskApp {
             return;
         };
         self.error.clear();
-        self.store.approve_goal_plan(goal);
+        self.task_start_feedback = None;
+        let approved = self.store.approve_goal_plan(goal).is_some();
+        if approved
+            && self
+                .store
+                .task(goal)
+                .is_some_and(|task| task.stage == Stage::Backlog)
+            && let Err(error) = self.store.set_stage(goal, Stage::InProgress)
+        {
+            self.error = error;
+            self.task_start_feedback = Some((goal, self.error.clone()));
+            cx.notify();
+            return;
+        }
+        if !approved {
+            self.error = "Review and run the research goal from its detail page.".into();
+            self.task_start_feedback = Some((goal, self.error.clone()));
+            cx.notify();
+            return;
+        }
         self.run_research_next(goal, true, cx);
     }
 }

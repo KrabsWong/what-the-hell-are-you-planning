@@ -720,7 +720,12 @@ impl TaskApp {
                 ))
                 .into_any_element();
         }
-        if !self.error.is_empty() {
+        if !self.error.is_empty()
+            && !self
+                .task_start_feedback
+                .as_ref()
+                .is_some_and(|(_, message)| message == &self.error)
+        {
             return row()
                 .gap_2()
                 .child(

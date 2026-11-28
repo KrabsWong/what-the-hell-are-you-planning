@@ -391,6 +391,7 @@ If an application termination cannot wait for the worker, startup reapplies a ty
 - **2026-11-26:** Stored runs left in `Running` after a lost completion event are reconciled to recovery candidates. A retained dispatch is treated as a normal waiting state with a green status and no longer pauses a topic queue with a start failure.
 
 - **2026-11-28:** Removed the Todo stage and the separate Steps page. Goal approval and execution now start together from **Run goal** on the goal detail page. Goal status and topic moved into the header, the topic project into the goal body, and the right properties panel was removed.
+- **2026-11-28:** Fixed the planned-goal startup transition so **Run goal** approval moves a Backlog goal into In progress before starting the queue, without treating manual Backlog withdrawal as approval. Run feedback now stays beside the goal execution controls instead of replacing the persistent footer status.
 
 ## Deferred result loading
 

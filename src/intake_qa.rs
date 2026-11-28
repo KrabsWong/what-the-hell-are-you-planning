@@ -413,8 +413,23 @@ pub fn run() {
         }
         assert_eq!(app.read(cx).store.task(goal).unwrap().stage, Stage::Backlog);
         let runs_before_approval = app.read(cx).store.runs().len();
-        app.update(cx, |a, cx| a.change_stage(goal, Stage::InProgress, cx));
+        app.update(cx, |a, cx| a.approve_and_run_research_topic(goal, cx));
         assert!(app.read(cx).store.goal_execution_approved(goal));
+        assert_eq!(
+            app.read(cx).store.task(goal).unwrap().stage,
+            Stage::InProgress,
+            "Run goal must leave the goal executable"
+        );
+        assert_eq!(
+            app.read(cx).error,
+            "",
+            "Run goal must not report a stale approval requirement"
+        );
+        w.render_frame(cx);
+        assert!(
+            w.find("footer-search").visible(),
+            "run feedback must not replace the saved-status footer"
+        );
         assert!(app.read(cx).store.research_pending_approval(other));
         assert_eq!(
             app.read(cx).store.runs().len(),

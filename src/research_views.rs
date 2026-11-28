@@ -773,6 +773,17 @@ impl TaskApp {
         let next_model = self.store.research_model(research.kind);
         let archived = self.store.task_is_archived(id);
         let mut panel = col().gap_2();
+        if let Some((_, message)) = self
+            .task_start_feedback
+            .as_ref()
+            .filter(|(task_id, _)| *task_id == id)
+        {
+            panel = panel.child(crate::views::notice(
+                crate::views::NoticeTone::Danger,
+                message.clone(),
+                cx,
+            ));
+        }
         if !archived {
             panel = panel.child(
                 row()

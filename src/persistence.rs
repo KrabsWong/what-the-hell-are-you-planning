@@ -446,15 +446,7 @@ fn normalize_removed_task_fields(mut value: serde_json::Value) -> serde_json::Va
     {
         for task in tasks {
             if let Some(object) = task.as_object_mut() {
-                if object.get("priority").is_some()
-                    && object.get("stage").and_then(serde_json::Value::as_str)
-                        == Some("Planned")
-                {
-                    object.insert("stage".into(), serde_json::Value::from("Backlog"));
-                }
-                object.remove("priority");
-                object.remove("cycle");
-                object.remove("bucket");
+                crate::domain::normalize_legacy_stage_value(task);
             }
         }
     }

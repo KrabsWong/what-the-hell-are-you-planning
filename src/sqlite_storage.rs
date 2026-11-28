@@ -63,7 +63,9 @@ fn read_connection(
                     tx.prepare(&format!("SELECT payload FROM {table} ORDER BY position"))?;
                 let rows = statement.query_map([], |r| r.get::<_, String>(0))?;
                 for row in rows {
-                    items.push(serde_json::from_str::<Value>(&row?)?);
+                    let mut value = serde_json::from_str::<Value>(&row?)?;
+                    crate::domain::normalize_legacy_stage_value(&mut value);
+                    items.push(value);
                 }
             }
             value[table] = Value::Array(items);

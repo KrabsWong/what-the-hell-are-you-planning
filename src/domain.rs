@@ -44,7 +44,7 @@ mod fixtures;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Stage {
     Backlog,
-    #[serde(alias = "Todo")]
+    #[serde(alias = "Planned", alias = "Todo")]
     InProgress,
     Review,
     Done,
@@ -108,6 +108,24 @@ pub struct Comment {
     pub created_at: String,
 }
 const LEGACY_APPROVAL_MARKER: &str = "legacy-approval-needs-migration";
+
+/// Older workspaces used `Planned` for the approved stage now called
+/// `InProgress`, and could carry removed task fields. Keep this conversion in
+/// one place so JSON and SQLite readers agree on legacy history.
+pub(crate) fn normalize_legacy_stage_value(value: &mut serde_json::Value) {
+    if let Some(object) = value.as_object_mut() {
+        if matches!(
+            object.get("stage").and_then(serde_json::Value::as_str),
+            Some("Planned" | "Todo")
+        ) {
+            object.insert("stage".into(), serde_json::Value::from("InProgress"));
+        }
+        object.remove("priority");
+        object.remove("cycle");
+        object.remove("bucket");
+    }
+}
+
 fn legacy_approved_plan() -> Option<String> {
     Some(LEGACY_APPROVAL_MARKER.into())
 }
@@ -320,17 +338,7 @@ fn deserialize_tasks<'de, D: serde::Deserializer<'de>>(
     let items = values
         .into_iter()
         .map(|mut value| {
-            if let Some(object) = value.as_object_mut() {
-                if object.get("priority").is_some()
-                    && object.get("stage").and_then(serde_json::Value::as_str)
-                        == Some("Planned")
-                {
-                    object.insert("stage".into(), serde_json::Value::from("Backlog"));
-                }
-                object.remove("priority");
-                object.remove("cycle");
-                object.remove("bucket");
-            }
+            normalize_legacy_stage_value(&mut value);
             serde_json::from_value(value).map_err(serde::de::Error::custom)
         })
         .collect::<Result<Vec<Task>, D::Error>>()?;
@@ -361,7 +369,14 @@ fn deserialize_requests<'de, D: serde::Deserializer<'de>>(
 fn deserialize_policies<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<TrackedVec<StagePolicy>, D::Error> {
-    let items = Vec::<StagePolicy>::deserialize(deserializer)?;
+    let values = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    let items = values
+        .into_iter()
+        .map(|mut value| {
+            normalize_legacy_stage_value(&mut value);
+            serde_json::from_value(value).map_err(serde::de::Error::custom)
+        })
+        .collect::<Result<Vec<StagePolicy>, D::Error>>()?;
     tracked::policy_from(items).map_err(serde::de::Error::custom)
 }
 
@@ -403,7 +418,14 @@ fn deserialize_occurrences<'de, D: serde::Deserializer<'de>>(
 fn deserialize_runs<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<TrackedVec<AgentRun>, D::Error> {
-    let items = Vec::<AgentRun>::deserialize(deserializer)?;
+    let values = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    let items = values
+        .into_iter()
+        .map(|mut value| {
+            normalize_legacy_stage_value(&mut value);
+            serde_json::from_value(value).map_err(serde::de::Error::custom)
+        })
+        .collect::<Result<Vec<AgentRun>, D::Error>>()?;
     tracked::run_from(items).map_err(serde::de::Error::custom)
 }
 
@@ -3539,7 +3561,43 @@ mod tests {
             object.insert("bucket".into(), serde_json::Value::from("Now"));
         }
         let loaded: Store = serde_json::from_value(legacy).unwrap();
-        assert_eq!(loaded.task(task).unwrap().stage, Stage::Backlog);
+        assert_eq!(loaded.task(task).unwrap().stage, Stage::InProgress);
+    }
+
+    #[test]
+    fn legacy_stage_values_load_across_tasks_runs_and_policies() {
+        let mut store = Store::empty();
+        let project = store.project_at_mut(0).unwrap().id;
+        let task = store
+            .create_task("Legacy task", project, Stage::InProgress, None)
+            .unwrap();
+        let mut legacy = serde_json::to_value(&store).unwrap();
+        for value in legacy["tasks"].as_array_mut().unwrap() {
+            value.as_object_mut().unwrap().insert(
+                "stage".into(),
+                serde_json::Value::from("Planned"),
+            );
+        }
+        for value in legacy["runs"].as_array_mut().into_iter().flatten() {
+            value.as_object_mut().unwrap().insert(
+                "stage".into(),
+                serde_json::Value::from("Planned"),
+            );
+        }
+        for value in legacy["policies"].as_array_mut().unwrap() {
+            value.as_object_mut().unwrap().insert(
+                "stage".into(),
+                serde_json::Value::from("Planned"),
+            );
+        }
+        let loaded: Store = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.task(task).unwrap().stage, Stage::InProgress);
+        for policy in loaded.policies() {
+            assert_eq!(policy.stage, Stage::InProgress);
+        }
+        for run in loaded.runs() {
+            assert_eq!(run.stage, Stage::InProgress);
+        }
     }
 
     #[test]

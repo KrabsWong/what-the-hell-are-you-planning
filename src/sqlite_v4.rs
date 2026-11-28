@@ -1682,19 +1682,7 @@ fn load_rows<T: DeserializeOwned>(
         let payload = row.map_err(|error| error.to_string())?;
         let mut value: Value = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
         transform_entity_paths(&mut value, work_table, root, false)?;
-        if work_table == WorkTable::Tasks
-            && value.get("priority").is_some()
-            && value.get("stage").and_then(Value::as_str) == Some("Planned")
-        {
-            if let Some(object) = value.as_object_mut() {
-                object.insert("stage".into(), Value::from("Backlog"));
-            }
-        }
-        if let Some(object) = value.as_object_mut() {
-            object.remove("priority");
-            object.remove("cycle");
-            object.remove("bucket");
-        }
+        crate::domain::normalize_legacy_stage_value(&mut value);
         values.push(serde_json::from_value(value).map_err(|error| error.to_string())?);
     }
     Ok(values)
@@ -1710,7 +1698,9 @@ fn load_policies(connection: &Connection) -> Result<Vec<StagePolicy>, String> {
     let mut values = Vec::new();
     for row in rows {
         let payload = row.map_err(|error| error.to_string())?;
-        values.push(serde_json::from_str(&payload).map_err(|error| error.to_string())?);
+        let mut value: Value = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        crate::domain::normalize_legacy_stage_value(&mut value);
+        values.push(serde_json::from_value(value).map_err(|error| error.to_string())?);
     }
     Ok(values)
 }
@@ -1768,6 +1758,7 @@ fn load_occurrences(connection: &Connection) -> Result<Vec<AutomationOccurrence>
         let (payload, snapshot) = row.map_err(|error| error.to_string())?;
         let mut value: Value = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
         value["snapshot"] = serde_json::from_str(&snapshot).map_err(|error| error.to_string())?;
+        crate::domain::normalize_legacy_stage_value(&mut value);
         values.push(serde_json::from_value(value).map_err(|error| error.to_string())?);
     }
     Ok(values)
@@ -3361,6 +3352,39 @@ mod tests {
             migrate_v3_to_v4(&path, &root, INCARNATION).unwrap(),
             MigrationOutcome::AlreadyCurrent
         );
+    }
+
+    #[test]
+    fn legacy_stage_values_open_from_v4_rows() {
+        let root = temp_root("legacy-stage");
+        let store = fixture_store(&root);
+        let path = root.join("workspace.sqlite3");
+        let database = SqliteV4::create_seeded(&path, &root, INCARNATION, &store).unwrap();
+        let connection = Connection::open(&path).unwrap();
+        for table in ["tasks", "runs", "policies"] {
+            connection
+                .execute(
+                    &format!(
+                        "UPDATE {table} SET payload=replace(payload, '\"InProgress\"', '\"Planned\"')"
+                    ),
+                    [],
+                )
+                .unwrap();
+        }
+        drop(connection);
+        let loaded = database.load_store().unwrap();
+        assert!(loaded.tasks().iter().all(|task| matches!(
+            task.stage,
+            Stage::Backlog | Stage::InProgress | Stage::Review | Stage::Done | Stage::Cancelled
+        )));
+        assert!(loaded.runs().iter().all(|run| matches!(
+            run.stage,
+            Stage::Backlog | Stage::InProgress | Stage::Review | Stage::Done | Stage::Cancelled
+        )));
+        assert!(loaded.policies().iter().all(|policy| matches!(
+            policy.stage,
+            Stage::Backlog | Stage::InProgress | Stage::Review | Stage::Done | Stage::Cancelled
+        )));
     }
 
     #[test]
